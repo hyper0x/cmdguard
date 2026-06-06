@@ -8,6 +8,7 @@
 - 修复 `init` 输出：已有目录/文件显示 `• 已存在`
 - 环境变量名 `CMGGUARD_CONFIG_DIR` → `CMDGUARD_CONFIG_DIR`
 - 完善文档：设计思路、人类与 AI 智能体防护
+- 新增 GitHub Actions：CI（go vet + go test）、Release（交叉编译 + 自动发布）
 
 ## v0.1.0 (2026-06-06)
 
