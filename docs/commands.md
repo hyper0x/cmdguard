@@ -32,7 +32,7 @@ rm --check
 
 # 查看版本（同时显示 cmdguard 和底层 rm 版本）
 rm --version
-# cmdguard 0.4.0
+# cmdguard 0.5.0
 # rm (GNU coreutils) 9.2
 # ...
 

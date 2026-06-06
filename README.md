@@ -102,9 +102,9 @@ cmdguard init
 
 ```toml
 [protect]
-reject = ["/etc/**", "~/.ssh/**"]
+reject = ["/etc/**", "/private/**", "~/.ssh/**"]
 confirm_double = ["~/.config/**"]
-confirm = ["~/Documents/archive/**"]
+confirm = ["~/Documents/**", "~/Desktop/**"]
 warn = ["~/Downloads/**"]
 
 [vault]

@@ -16,7 +16,8 @@ confirm_double = [
   "~/.config/**",
 ]
 confirm = [
-  "~/Documents/archive/**",
+  "~/Documents/**",
+  "~/Desktop/**",
 ]
 warn = [
   "~/Downloads/**",
@@ -25,7 +26,19 @@ warn = [
 # 按命令覆盖
 [protect.command.rm]
 reject = [
-  "~/Documents/不许删",
+  "~/.config/**",
+]
+
+# mv 保护目标路径（最后一个参数），对 ~/Downloads/** 设为 reject 防止误移入覆盖文件
+[protect.command.mv]
+reject = [
+  "~/Downloads/**",
+]
+
+# chmod 修改权限，对应用配置目录设为 reject（全局规则中 ~/.config/** 是 confirm_double）
+[protect.command.chmod]
+reject = [
+  "~/.config/**",
 ]
 
 [vault]
@@ -48,9 +61,9 @@ auto_purge = true
 
 首次运行或 `cmdguard init` 生成的默认配置包含：
 
-- **reject：** 系统目录（`/bin/`、`/etc/`、`/usr/` 等）、密钥文件（`*.key`、`*.pem` 等）、家目录关键配置（`~/.ssh/`、`~/.gnupg/`、`~/.aws/`）
+- **reject：** 系统目录（`/bin/`、`/etc/`、`/usr/`、`/private/` 等）、密钥文件（`*.key`、`*.pem` 等）、家目录关键配置（`~/.ssh/`、`~/.gnupg/`、`~/.aws/`）
 - **confirm_double：** 家目录应用数据（`~/.config/`、`~/.local/share/`）
-- **confirm：** 文档归档（`~/Documents/archive/`）
+- **confirm：** 文档目录（`~/Documents/`）、桌面文件（`~/Desktop/`）
 - **warn：** 下载目录（`~/Downloads/`）
 
 ## 保护级别

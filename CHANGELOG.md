@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.0 (2026-06-06)
+
+- `allow` 操作现在也写日志（所有经过 cmdguard 的命令都有记录）
+- 默认配置修正：`~/Documents/archive/**` → `~/Documents/**`
+- 新增 `/private/**` 到 reject（macOS 真实路径）
+- 新增 `~/Desktop/**` 到 confirm
+- 命令覆盖示例路径合理化（去掉中文路径和冗余路径）
+- 统一所有文档和注释中的路径写法
+
 ## v0.4.0 (2026-06-06)
 
 - 新增 `--verbose` 标志（显示详细执行信息）
