@@ -1,0 +1,14 @@
+# Binaries
+cmdguard
+*.exe
+*.test
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
