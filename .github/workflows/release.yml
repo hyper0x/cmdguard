@@ -44,7 +44,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: cmdguard_*.tar.gz cmdguard_*.zip
+          path: cmdguard_*
           if-no-files-found: error
 
   release:
@@ -55,7 +55,7 @@ jobs:
         with:
           path: artifacts
       - name: Collect archives
-        run: find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec cp {} . \;
+        run: find artifacts -type f -exec cp {} . \;
       - name: Upload release
         uses: softprops/action-gh-release@v2
         with:
