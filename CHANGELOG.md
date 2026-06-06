@@ -1,16 +1,19 @@
 # Changelog
 
-## v0.3.0 (2026-06-06)
+## v0.4.0 (2026-06-06)
 
-- 新增 `--check` 标志，用于验证 alias 是否生效
-- 新增 `--dry-run` 标志（rm/mv/chmod/init/undo/vault clean）
 - 新增 `--verbose` 标志（显示详细执行信息）
-- 新增 `--version`/`--help` 支持（被托管的 rm/mv/chmod 命令，同时显示底层命令信息）
-- 修复 `findRealCommand` 跳过包装脚本目录，防止无限递归
 - 修复 `--dry-run`/`--verbose` 等 cmdguard 专属参数透传到底层命令
 - Release 版本不显示 commit hash
 - 文档拆分：`docs/commands.md`、`docs/configuration.md`、`docs/vault.md`
 - 文档补全：`CMDGUARD_CONFIG_DIR`、`--check`、`--verbose`、`init --dry-run`、`undo --interactive`、`undo --dry-run`
+
+## v0.3.0 (2026-06-06)
+
+- 新增 `--check` 标志，用于验证 alias 是否生效
+- 新增 `--dry-run` 标志（rm/mv/chmod/init/undo/vault clean）
+- 新增 `--version`/`--help` 支持（被托管的 rm/mv/chmod 命令，同时显示底层命令信息）
+- 修复 `findRealCommand` 跳过包装脚本目录，防止无限递归
 - 新增 GitHub Actions：CI（go vet + go test）、Release（交叉编译 + 自动发布）
 
 ## v0.2.0 (2026-06-06)
