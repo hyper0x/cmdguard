@@ -193,6 +193,7 @@ reject = [
   "/usr/**",
   "/var/**",
   "/opt/**",
+  "/private/**",
   "/System/**",
   "/Library/**",
   "/Applications/**",
@@ -216,8 +217,10 @@ confirm_double = [
 ]
 
 confirm = [
-  # 文档归档 - 确认
-  "~/Documents/archive/**",
+  # 文档目录 - 确认
+  "~/Documents/**",
+  # 桌面文件 - 确认
+  "~/Desktop/**",
 ]
 
 warn = [
@@ -225,20 +228,24 @@ warn = [
   "~/Downloads/**",
 ]
 
-# 按命令覆盖
+# 按命令覆盖 — 对特定命令使用更严格的保护级别
+# 例如：全局规则中 ~/.config/** 是 confirm_double，
+# 但 rm 操作更危险，所以对 rm 单独设为 reject
 [protect.command.rm]
 reject = [
-  "~/Documents/不许删",
+  "~/.config/**",
 ]
 
+# mv 保护目标路径（最后一个参数），对 ~/Downloads/** 设为 reject 防止误移入覆盖文件
 [protect.command.mv]
 reject = [
-  "~/Projects/important",
+  "~/Downloads/**",
 ]
 
+# chmod 修改权限，对应用配置目录设为 reject（全局规则中 ~/.config/** 是 confirm_double）
 [protect.command.chmod]
 reject = [
-  "~/Projects/important",
+  "~/.config/**",
 ]
 
 # Vault 备份设置

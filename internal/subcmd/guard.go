@@ -206,6 +206,16 @@ func RunGuard(cmdName string, args []string) {
 			fmt.Printf("[cmdguard] 无匹配规则 — %s 将直接执行\n", cmdName)
 			os.Exit(0)
 		}
+		// Log the allowed operation
+		logEntry := log.Entry{
+			Command: cmdName,
+			Action:  "allow",
+			Targets: strings.Join(targets, ", "),
+			Message: "无匹配规则，放行",
+		}
+		if logger, err := log.New(); err == nil {
+			logger.Append(logEntry)
+		}
 		// No protection matched, execute directly
 		execOriginal(cmdName, args, verbose)
 		return
