@@ -72,9 +72,13 @@ func backupFiles(files []string) (string, error) {
 // RunInit handles the "init" command
 func RunInit(args []string) {
 	force := false
+	dryRun := false
 	for _, a := range args {
-		if a == "--force" || a == "-f" {
+		switch a {
+		case "--force", "-f":
 			force = true
+		case "--dry-run":
+			dryRun = true
 		}
 	}
 
@@ -82,6 +86,36 @@ func RunInit(args []string) {
 	binDir := filepath.Join(cfgDir, "bin")
 	logDir := filepath.Join(cfgDir, "log")
 	vaultDir := filepath.Join(cfgDir, "vault")
+
+	if dryRun {
+		overwrite := "将跳过"
+		if force {
+			overwrite = "将覆盖"
+		}
+		fmt.Println("[cmdguard] 将执行以下操作:")
+		fmt.Printf("  ✓ 创建目录 %s\n", cfgDir)
+		fmt.Printf("  ✓ 创建目录 %s\n", binDir)
+		fmt.Printf("  ✓ 创建目录 %s\n", logDir)
+		fmt.Printf("  ✓ 创建目录 %s\n", vaultDir)
+		cfgPath := config.ConfigPath()
+		if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+			fmt.Printf("  ✓ 创建配置文件 %s\n", cfgPath)
+		} else {
+			fmt.Printf("  • 配置文件已存在 %s（%s）\n", cfgPath, overwrite)
+		}
+		for _, cmd := range []string{"rm", "mv", "chmod"} {
+			scriptPath := filepath.Join(binDir, cmd)
+			if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+				fmt.Printf("  ✓ 创建包装脚本 %s\n", scriptPath)
+			} else {
+				fmt.Printf("  • 包装脚本已存在 %s（%s）\n", scriptPath, overwrite)
+			}
+		}
+		if force {
+			fmt.Println("  📦 旧文件将打包到 backup/init-<时间戳>.zip")
+		}
+		os.Exit(0)
+	}
 
 	// 1. Create directory structure
 	dirs := []string{cfgDir, binDir, logDir, vaultDir}

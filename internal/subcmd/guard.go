@@ -17,11 +17,15 @@ import (
 
 // RunGuard handles rm/mv/chmod commands
 func RunGuard(cmdName string, args []string) {
-	// Check for --check flag (used to verify alias is working)
+	// Check for special flags
+	dryRun := false
 	for _, a := range args {
-		if a == "--check" {
+		switch a {
+		case "--check":
 			fmt.Printf("[cmdguard] 防护已生效 — %s 正在通过 cmdguard 运行\n", cmdName)
 			os.Exit(0)
+		case "--dry-run":
+			dryRun = true
 		}
 	}
 
@@ -74,6 +78,10 @@ func RunGuard(cmdName string, args []string) {
 
 	case "confirm_double":
 		guard.PrintWarning(cmdName, result)
+		if dryRun {
+			fmt.Printf("[cmdguard] 将备份后执行 %s（需要双层确认）\n", cmdName)
+			os.Exit(0)
+		}
 		fmt.Fprintf(os.Stderr, "是否继续? (y/N): ")
 		reader := bufio.NewReader(os.Stdin)
 		answer, _ := reader.ReadString('\n')
@@ -114,6 +122,10 @@ func RunGuard(cmdName string, args []string) {
 
 	case "confirm":
 		guard.PrintWarning(cmdName, result)
+		if dryRun {
+			fmt.Printf("[cmdguard] 将备份后执行 %s（需要确认）\n", cmdName)
+			os.Exit(0)
+		}
 		fmt.Fprintf(os.Stderr, "是否继续? (y/N): ")
 		reader := bufio.NewReader(os.Stdin)
 		answer, _ := reader.ReadString('\n')
@@ -136,9 +148,17 @@ func RunGuard(cmdName string, args []string) {
 
 	case "warn":
 		guard.PrintWarning(cmdName, result)
+		if dryRun {
+			fmt.Printf("[cmdguard] 将备份后执行 %s\n", cmdName)
+			os.Exit(0)
+		}
 		// Continue to backup + execute
 
 	case "allow":
+		if dryRun {
+			fmt.Printf("[cmdguard] 无匹配规则 — %s 将直接执行\n", cmdName)
+			os.Exit(0)
+		}
 		// No protection matched, execute directly
 		execOriginal(cmdName, args)
 		return
@@ -146,6 +166,13 @@ func RunGuard(cmdName string, args []string) {
 
 	// For confirm_double/confirm/warn: backup to vault then execute
 	if result.Action == "confirm_double" || result.Action == "confirm" || result.Action == "warn" {
+		if dryRun {
+			fmt.Printf("[cmdguard] 将备份以下文件到 vault 后执行 %s:\n", cmdName)
+			for _, t := range targets {
+				fmt.Printf("  - %s\n", t)
+			}
+			os.Exit(0)
+		}
 		v, err := vault.New(&cfg.Vault)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[cmdguard] 错误: 创建 vault 失败: %v\n", err)

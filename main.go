@@ -54,12 +54,15 @@ func printUsage() {
 命令:
   rm <args...>       以 rm 模式运行（别名: alias rm='cmdguard rm'）
                       附加 --check 可验证 alias 是否生效
+                      --dry-run 预览匹配结果，不执行
   mv <args...>       以 mv 模式运行
   chmod <args...>    以 chmod 模式运行
   init [--force]     初始化环境（创建目录、配置文件、包装脚本）
                       --force 覆盖已有文件，旧文件打包到 ~/.cmdguard/backup/
+                      --dry-run 预览操作，不实际执行
   list [选项]         列出操作日志
   undo [选项]         恢复操作
+                      --dry-run 预览要恢复的文件，不实际恢复
   vault clean        清理过期 vault 备份
   config             查看当前配置
   help, -h, --help   显示帮助信息
