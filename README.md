@@ -25,6 +25,45 @@ cmdguard 是一个 CLI 工具，包装危险命令（`rm`、`mv`、`chmod`），
 
 ---
 
+## 设计思路
+
+cmdguard 的设计源于一个核心问题：**如何防止危险命令（rm/mv/chmod）误操作导致数据丢失？**
+
+这里的"误操作"有两个来源：
+
+### 防护人类误操作
+
+人类在终端中操作时，最容易犯错：
+- `rm -rf /etc /tmp/x`（多打了个空格）
+- `rm -rf ~/Projects /tmp/x`（本意是删临时目录，结果家目录也没了）
+- 疲劳时手快按了 `y`
+
+**防护方式：** 在 `~/.zshrc` 或 `~/.bashrc` 中添加 alias，让交互式终端的 `rm`/`mv`/`chmod` 自动走 cmdguard：
+
+```bash
+alias rm='cmdguard rm'
+alias mv='cmdguard mv'
+alias chmod='cmdguard chmod'
+```
+
+### 防护 AI 智能体误操作
+
+AI agent 在执行任务时，可能调用 `rm`、`mv`、`chmod` 等命令。由于 agent 没有人类的判断力，误操作风险更高。
+
+**防护方式：** 将 `~/.cmdguard/bin/` 放到 PATH 的最前面，让 agent 调用的 `rm`/`mv`/`chmod`（包括脚本中的调用）自动走 cmdguard：
+
+```bash
+export PATH="$HOME/.cmdguard/bin:$PATH"
+```
+
+### 防护不到的情况
+
+无论 alias 还是 PATH 劫持，都无法拦截直接使用绝对路径的调用（如 `/bin/rm`）。这是操作系统层面的限制，cmdguard 的定位是"防护 + 审计 + 可恢复"，不是"绝对拦截"。
+
+两种方式可以同时使用，不会冲突。修改 shell 配置文件后执行 `source ~/.zshrc`（或重启终端）生效。
+
+---
+
 ## 快速开始
 
 ### 安装
@@ -57,31 +96,7 @@ cmdguard init --force            # 强制覆盖已有配置（旧文件打包到
 
 ### 集成到 Shell
 
-`cmdguard init` 完成后，会打印完整的集成指南。两种方式任选：
-
-#### 方式一：alias（推荐，简单）
-
-在 `~/.zshrc`、`~/.bashrc` 或 `~/.bash_profile` 中添加：
-
-```bash
-alias rm='cmdguard rm'
-alias mv='cmdguard mv'
-alias chmod='cmdguard chmod'
-```
-
-**适用场景：** 交互式终端操作
-**限制：** 脚本和程序直接调用 `/bin/rm` 等不会经过 alias
-
-#### 方式二：PATH 劫持（覆盖更广）
-
-```bash
-export PATH="$HOME/.cmdguard/bin:$PATH"
-```
-
-**适用场景：** 需要拦截脚本中的 `rm`/`mv`/`chmod` 调用
-**限制：** 直接调用 `/bin/rm` 等绝对路径仍会绕过
-
-> 两种方式可以同时使用，不会冲突。修改 shell 配置文件后执行 `source ~/.zshrc`（或重启终端）生效。
+`cmdguard init` 完成后会打印完整的集成指南。详细说明请参考[设计思路](#设计思路)中的防护方式。
 
 ---
 
@@ -323,10 +338,6 @@ go install -ldflags "-X main.version=$(git describe --tags 2>/dev/null || echo '
 
 ## 常见问题
 
-### Q: alias 和 PATH 劫持有什么区别？
-
-alias 只对交互式终端生效。PATH 劫持对通过命令名调用的脚本也生效。两者都无法拦截直接使用 `/bin/rm` 绝对路径的调用。
-
 ### Q: 绕过 cmdguard 怎么办？
 
 cmdguard 的设计哲学是"防护 + 审计 + 可恢复"，不是"绝对拦截"。如果用户或程序刻意绕过（如直接调用 `/bin/rm`），cmdguard 无法阻止。但：
@@ -356,10 +367,3 @@ rm /usr/local/bin/cmdguard
 ## 许可证
 
 [MIT](LICENSE)
-
----
-
-## 灵感来源
-
-- [safe-rm](https://github.com/kaelzhang/shell-safe-rm) — 一个更简单的 rm 安全包装
-- [trash-cli](https://github.com/andreafrancia/trash-cli) — 将文件移动到回收站
