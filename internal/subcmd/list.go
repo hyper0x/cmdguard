@@ -70,18 +70,18 @@ func RunList(args []string) {
 	}
 
 	if jsonOutput {
-		// Simple JSON output
+		// JSON output — full ID for pipe to undo
 		fmt.Print("[")
 		for i, e := range entries {
 			if i > 0 {
 				fmt.Print(",")
 			}
 			fmt.Printf(`{"id":"%s","time":"%s","cmd":"%s","action":"%s","targets":"%s"}`,
-				e.ID[:min(len(e.ID), 8)], e.Timestamp, e.Command, e.Action, e.Targets)
+				e.ID, e.Timestamp, e.Command, e.Action, e.Targets)
 		}
 		fmt.Println("]")
 	} else {
-		// Table output
+		// Table output — truncated ID for readability
 		fmt.Printf("%-8s  %-19s  %-6s  %-8s  %s\n", "ID", "时间", "命令", "动作", "目标路径")
 		fmt.Println(strings.Repeat("-", 80))
 		for _, e := range entries {
@@ -93,14 +93,12 @@ func RunList(args []string) {
 			if len(ts) > 19 {
 				ts = ts[:19]
 			}
+			shortID := e.ID
+			if len(shortID) > 8 {
+				shortID = shortID[:8]
+			}
 			fmt.Printf("%-8s  %-19s  %-6s  %-8s  %s%s\n",
-				e.ID[:min(len(e.ID), 8)],
-				ts,
-				e.Command,
-				e.Action,
-				e.Targets,
-				expired,
-			)
+				shortID, ts, e.Command, e.Action, e.Targets, expired)
 		}
 	}
 }

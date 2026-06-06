@@ -181,17 +181,25 @@ func (l *Log) Search(q Query) []Entry {
 	return result
 }
 
-// FindByID finds a single entry by ID
+// FindByID finds a single entry by ID (supports prefix matching)
 func (l *Log) FindByID(id string) *Entry {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
+	var match *Entry
 	for _, e := range l.entries {
 		if e.ID == id {
 			return &e
 		}
+		if strings.HasPrefix(e.ID, id) {
+			if match != nil {
+				// Ambiguous prefix
+				return nil
+			}
+			match = &e
+		}
 	}
-	return nil
+	return match
 }
 
 // MarkExpired marks entries whose vault has been purged

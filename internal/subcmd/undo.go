@@ -40,16 +40,29 @@ func RunUndo(args []string) {
 	if id == "" && interactive {
 		stat, _ := os.Stdin.Stat()
 		if (stat.Mode() & os.ModeCharDevice) == 0 {
-			// Piped input
+			// Piped input — supports both table output and JSON
 			scanner := bufio.NewScanner(os.Stdin)
 			for scanner.Scan() {
 				line := strings.TrimSpace(scanner.Text())
-				if line == "" {
+				if line == "" || strings.HasPrefix(line, "-") {
 					continue
 				}
-				// Parse ID from the line (first column)
+				// Try JSON pipe: [{"id":"...",...},...]
+				if strings.HasPrefix(line, "[") {
+					// Extract first id from JSON array
+					idx := strings.Index(line, `"id":"`)
+					if idx >= 0 {
+						start := idx + 6
+						end := strings.Index(line[start:], `"`)
+						if end >= 0 {
+							id = line[start : start+end]
+							break
+						}
+					}
+				}
+				// Table pipe: parse ID from first column
 				fields := strings.Fields(line)
-				if len(fields) > 0 {
+				if len(fields) > 0 && fields[0] != "ID" {
 					id = fields[0]
 					break
 				}
