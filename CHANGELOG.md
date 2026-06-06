@@ -2,7 +2,6 @@
 
 ## v0.2.0 (2026-06-06)
 
-- 新增 `confirm_double` 保护级别（双层确认）
 - 新增 `cmdguard init` 子命令（初始化环境，`--force` 备份旧文件）
 - 新增 `cmdguard list --json` JSON 输出格式
 - 修复管道模式（支持表格和 JSON 两种格式）
