@@ -40,7 +40,24 @@ jobs:
           else
             tar czf ${ARCHIVE}.tar.gz $BINARY
           fi
-      - name: Upload
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: cmdguard_*.tar.gz cmdguard_*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Collect archives
+        run: find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec cp {} . \;
+      - name: Upload release
         uses: softprops/action-gh-release@v2
         with:
           files: cmdguard_*.tar.gz cmdguard_*.zip
+          fail_on_unmatched_files: true
