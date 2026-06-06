@@ -172,7 +172,7 @@ func (v *Vault) ListExpired() ([]string, error) {
 	return expired, nil
 }
 
-// BackupExists checks if a backup directory exists for the given ID
+// BackupExists checks if a backup directory exists for the given ID (supports prefix)
 func (v *Vault) BackupExists(id string) bool {
 	entries, err := os.ReadDir(v.dir)
 	if err != nil {
@@ -184,28 +184,33 @@ func (v *Vault) BackupExists(id string) bool {
 			continue
 		}
 		parts := strings.SplitN(entry.Name(), "_", 3)
-		if len(parts) == 3 && parts[2] == id {
+		if len(parts) == 3 && (parts[2] == id || strings.HasPrefix(parts[2], id)) {
 			return true
 		}
 	}
 	return false
 }
 
-// FindBackupDir finds the backup directory for a given ID
+// FindBackupDir finds the backup directory for a given ID (supports prefix)
 func (v *Vault) FindBackupDir(id string) string {
 	entries, err := os.ReadDir(v.dir)
 	if err != nil {
 		return ""
 	}
 
+	var match string
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 		parts := strings.SplitN(entry.Name(), "_", 3)
-		if len(parts) == 3 && parts[2] == id {
-			return filepath.Join(v.dir, entry.Name())
+		if len(parts) == 3 && (parts[2] == id || strings.HasPrefix(parts[2], id)) {
+			if match != "" {
+				// Ambiguous prefix
+				return ""
+			}
+			match = filepath.Join(v.dir, entry.Name())
 		}
 	}
-	return ""
+	return match
 }
