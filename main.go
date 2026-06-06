@@ -48,7 +48,7 @@ func printVersion() {
 }
 
 func printUsage() {
-	fmt.Println(`cmdguard — 命令防护工具
+	fmt.Print(`cmdguard — 命令防护工具
 
 用法:
   cmdguard <command> [选项]
@@ -57,6 +57,8 @@ func printUsage() {
   rm <args...>       以 rm 模式运行（别名: alias rm='cmdguard rm'）
                       附加 --check 可验证 alias 是否生效
                       --dry-run 预览匹配结果，不执行
+                      --version 显示版本（含底层命令版本）
+                      --help 显示帮助（含底层命令帮助）
   mv <args...>       以 mv 模式运行
   chmod <args...>    以 chmod 模式运行
   init [--force]     初始化环境（创建目录、配置文件、包装脚本）
@@ -92,5 +94,9 @@ vault 选项:
 
 配置文件: ~/.cmdguard/config.toml
 日志目录: ~/.cmdguard/log/
-Vault目录: ~/.cmdguard/vault/`)
+Vault目录: ~/.cmdguard/vault/
+
+环境变量:
+  CMDGUARD_CONFIG_DIR  自定义配置目录（默认 ~/.cmdguard）
+`)
 }
