@@ -282,6 +282,6 @@ exec %s %s "$@"
 	fmt.Println("  注意：直接调用 /bin/rm 等绝对路径仍会绕过")
 	fmt.Println()
 	fmt.Println("两种方式可以同时使用，不会冲突。")
-	fmt.Println("修改 shell 配置文件后，执行 source ~/.zshrc（或重启终端）生效。")
+	fmt.Println("修改 shell 配置文件（~/.zshrc、~/.bashrc、~/.bash_profile 等）后执行 source 使其生效，或重启终端。")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 }

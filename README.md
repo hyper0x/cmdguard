@@ -60,7 +60,7 @@ export PATH="$HOME/.cmdguard/bin:$PATH"
 
 无论 alias 还是 PATH 劫持，都无法拦截直接使用绝对路径的调用（如 `/bin/rm`）。这是操作系统层面的限制，cmdguard 的定位是"防护 + 审计 + 可恢复"，不是"绝对拦截"。
 
-两种方式可以同时使用，不会冲突。修改 shell 配置文件后执行 `source ~/.zshrc`（或重启终端）生效。
+两种方式可以同时使用，不会冲突。修改 shell 配置文件（`~/.zshrc`、`~/.bashrc`、`~/.bash_profile` 等）后执行 `source` 使其生效，或重启终端。
 
 ---
 
