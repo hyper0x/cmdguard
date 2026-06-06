@@ -53,6 +53,7 @@ func printUsage() {
 
 命令:
   rm <args...>       以 rm 模式运行（别名: alias rm='cmdguard rm'）
+                      附加 --cmdguard-check 可验证 alias 是否生效
   mv <args...>       以 mv 模式运行
   chmod <args...>    以 chmod 模式运行
   init [--force]     初始化环境（创建目录、配置文件、包装脚本）
