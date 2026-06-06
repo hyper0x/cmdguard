@@ -26,6 +26,12 @@ func RunGuard(cmdName string, args []string) {
 			os.Exit(0)
 		case "--dry-run":
 			dryRun = true
+		case "--version":
+			fmt.Printf("cmdguard %s (commit: %s)\n", Version, Commit)
+			os.Exit(0)
+		case "--help":
+			printGuardHelp(cmdName)
+			os.Exit(0)
 		}
 	}
 
@@ -258,12 +264,14 @@ func execOriginal(cmdName string, args []string) {
 	}
 }
 
-// findRealCommand finds the real command, skipping cmdguard itself
+// findRealCommand finds the real command, skipping cmdguard itself and its wrapper scripts
 func findRealCommand(name string) (string, error) {
 	pathEnv := os.Getenv("PATH")
 	dirs := strings.Split(pathEnv, ":")
 
 	self, _ := os.Executable()
+	cfgDir := config.ConfigDir()
+	binDir := filepath.Join(cfgDir, "bin")
 
 	for _, dir := range dirs {
 		fullPath := filepath.Join(dir, name)
@@ -280,8 +288,38 @@ func findRealCommand(name string) (string, error) {
 					continue
 				}
 			}
+			// Skip wrapper scripts in cmdguard bin directory
+			if strings.HasPrefix(fullPath, binDir+string(filepath.Separator)) {
+				continue
+			}
 			return fullPath, nil
 		}
 	}
 	return "", fmt.Errorf("命令 %s 未找到", name)
+}
+
+// version and commit are set via -ldflags at build time
+var Version = "dev"
+var Commit = "none"
+
+func printGuardHelp(cmdName string) {
+	fmt.Printf(`cmdguard — 命令防护工具
+
+用法:
+  %s [选项] [参数...]
+
+选项:
+  --check       验证 cmdguard 防护是否生效
+  --dry-run     预览匹配结果，不执行
+  --version     显示版本信息
+  --help        显示帮助信息
+
+保护级别:
+  reject           🚫  直接拒绝，不执行
+  confirm_double   🔒  警告 + 双层确认（输入 yes）→ 备份 → 执行
+  confirm          ❓  警告 + 单层确认（按 y）→ 备份 → 执行
+  warn             ⚠️  警告 + 备份 → 执行
+
+更多信息: cmdguard help
+`, cmdName)
 }

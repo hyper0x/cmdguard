@@ -4,6 +4,8 @@
 
 - 新增 `--check` 标志，用于验证 alias 是否生效
 - 新增 `--dry-run` 标志（rm/mv/chmod/init/undo/vault clean）
+- 新增 `--version`/`--help` 支持（被托管的 rm/mv/chmod 命令）
+- 修复 `findRealCommand` 跳过包装脚本目录，防止无限递归
 - 新增 GitHub Actions：CI（go vet + go test）、Release（交叉编译 + 自动发布）
 
 ## v0.2.0 (2026-06-06)

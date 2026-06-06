@@ -37,6 +37,8 @@ func main() {
 		// sub is a command name like rm, mv, chmod
 		guardCmd := sub
 		args := os.Args[2:]
+		subcmd.Version = version
+		subcmd.Commit = commit
 		subcmd.RunGuard(guardCmd, args)
 	}
 }
