@@ -17,6 +17,14 @@ import (
 
 // RunGuard handles rm/mv/chmod commands
 func RunGuard(cmdName string, args []string) {
+	// Check for --cmdguard-check flag (used to verify alias is working)
+	for _, a := range args {
+		if a == "--cmdguard-check" {
+			fmt.Printf("[cmdguard] 防护已生效 — %s 正在通过 cmdguard 运行\n", cmdName)
+			os.Exit(0)
+		}
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[cmdguard] 错误: %v\n", err)
