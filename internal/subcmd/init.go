@@ -75,7 +75,7 @@ func RunInit(args []string) {
 	dryRun := false
 	for _, a := range args {
 		switch a {
-		case "--force", "-f":
+		case "--force":
 			force = true
 		case "--dry-run":
 			dryRun = true

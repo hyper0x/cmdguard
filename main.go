@@ -19,9 +19,9 @@ func main() {
 	sub := os.Args[1]
 
 	switch sub {
-	case "help", "--help", "-h":
+	case "help", "--help":
 		printUsage()
-	case "version", "--version", "-v":
+	case "version", "--version":
 		printVersion()
 	case "init":
 		subcmd.RunInit(os.Args[2:])
@@ -74,8 +74,8 @@ func printUsage() {
                       --dry-run 预览要恢复的文件，不实际恢复
   vault clean        清理过期 vault 备份
   config             查看当前配置
-  help, -h, --help   显示帮助信息
-  version, -v, --version  显示版本信息
+  help, --help      显示帮助信息
+  version, --version  显示版本信息
 
 list 选项:
   --recent N    最近 N 条（默认 20）
