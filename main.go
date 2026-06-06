@@ -44,7 +44,11 @@ func main() {
 }
 
 func printVersion() {
-	fmt.Printf("cmdguard %s (commit: %s)\n", version, commit)
+	if version == "dev" {
+		fmt.Printf("cmdguard %s (commit: %s)\n", version, commit)
+	} else {
+		fmt.Printf("cmdguard %s\n", version)
+	}
 }
 
 func printUsage() {
@@ -57,6 +61,7 @@ func printUsage() {
   rm <args...>       以 rm 模式运行（别名: alias rm='cmdguard rm'）
                       附加 --check 可验证 alias 是否生效
                       --dry-run 预览匹配结果，不执行
+                      --verbose 显示详细执行信息
                       --version 显示版本（含底层命令版本）
                       --help 显示帮助（含底层命令帮助）
   mv <args...>       以 mv 模式运行
