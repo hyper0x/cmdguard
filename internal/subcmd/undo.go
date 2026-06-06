@@ -175,7 +175,7 @@ func undoByID(logger *log.Log, id string) {
 			Command: "undo",
 			Action:  "undo",
 			Targets: entry.Targets,
-			Message: fmt.Sprintf("恢复操作 %s (%s %s)", entry.ID[:min(len(entry.ID), 8)], entry.Command, entry.Targets),
+			Message: fmt.Sprintf("恢复操作 %s (%s %s)", entry.ID, entry.Command, entry.Targets),
 		}
 		logger.Append(undoEntry)
 	} else {
