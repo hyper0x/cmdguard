@@ -96,7 +96,7 @@ func DefaultConfig() *Config {
 
 // ConfigDir returns ~/.cmdguard
 func ConfigDir() string {
-	if d := os.Getenv("CMGGUARD_CONFIG_DIR"); d != "" {
+	if d := os.Getenv("CMDGUARD_CONFIG_DIR"); d != "" {
 		return d
 	}
 	home, _ := os.UserHomeDir()
