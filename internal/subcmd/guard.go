@@ -19,6 +19,8 @@ import (
 func RunGuard(cmdName string, args []string) {
 	// Check for special flags
 	dryRun := false
+	verbose := false
+	filteredArgs := make([]string, 0, len(args))
 	for _, a := range args {
 		switch a {
 		case "--check":
@@ -26,8 +28,14 @@ func RunGuard(cmdName string, args []string) {
 			os.Exit(0)
 		case "--dry-run":
 			dryRun = true
+		case "--verbose":
+			verbose = true
 		case "--version":
-			fmt.Printf("cmdguard %s (commit: %s)\n\n", Version, Commit)
+			if Version == "dev" {
+				fmt.Printf("cmdguard %s (commit: %s)\n\n", Version, Commit)
+			} else {
+				fmt.Printf("cmdguard %s\n\n", Version)
+			}
 			// Also show underlying command version (silently skip if unsupported)
 			if realCmd, err := findRealCommand(cmdName); err == nil {
 				if output, err := exec.Command(realCmd, "--version").Output(); err == nil {
@@ -45,8 +53,11 @@ func RunGuard(cmdName string, args []string) {
 				}
 			}
 			os.Exit(0)
+		default:
+			filteredArgs = append(filteredArgs, a)
 		}
 	}
+	args = filteredArgs
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -73,16 +84,33 @@ func RunGuard(cmdName string, args []string) {
 
 	if len(targets) == 0 {
 		// No file targets, just execute the original command
-		execOriginal(cmdName, args)
+		if verbose {
+			fmt.Printf("[cmdguard] 未检测到文件路径参数，直接执行\n")
+		}
+		execOriginal(cmdName, args, verbose)
 		return
 	}
 
 	// Check protection rules
 	result := guard.Check(cfg, cmdName, targets)
 
+	if verbose {
+		if result.Rule != "" {
+			fmt.Printf("[cmdguard] 匹配规则: %s (级别: %s)\n", result.Rule, result.Action)
+		} else {
+			fmt.Printf("[cmdguard] 未匹配任何规则\n")
+		}
+		if result.Message != "" {
+			fmt.Printf("[cmdguard] %s\n", result.Message)
+		}
+	}
+
 	switch result.Action {
 	case "reject":
 		guard.PrintWarning(cmdName, result)
+		if verbose {
+			fmt.Printf("[cmdguard] 已拒绝执行\n")
+		}
 		logEntry := log.Entry{
 			Command: cmdName,
 			Action:  "reject",
@@ -179,7 +207,7 @@ func RunGuard(cmdName string, args []string) {
 			os.Exit(0)
 		}
 		// No protection matched, execute directly
-		execOriginal(cmdName, args)
+		execOriginal(cmdName, args, verbose)
 		return
 	}
 
@@ -195,7 +223,7 @@ func RunGuard(cmdName string, args []string) {
 		v, err := vault.New(&cfg.Vault)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[cmdguard] 错误: 创建 vault 失败: %v\n", err)
-			execOriginal(cmdName, args)
+			execOriginal(cmdName, args, verbose)
 			return
 		}
 
@@ -222,10 +250,17 @@ func RunGuard(cmdName string, args []string) {
 		// Backup files to vault
 		backupDir := v.BackupDir(entry.ID)
 
+		if verbose {
+			fmt.Printf("[cmdguard] 备份目录: %s\n", backupDir)
+		}
+
 		if cmdName == "mv" {
 			// For mv, backup the destination file (last target) before overwrite
 			dest := targets[len(targets)-1]
 			if info, err := os.Stat(dest); err == nil && !info.IsDir() {
+				if verbose {
+					fmt.Printf("[cmdguard] 备份: %s\n", dest)
+				}
 				if _, err := v.SaveFile(backupDir, dest); err != nil {
 					fmt.Fprintf(os.Stderr, "[cmdguard] 警告: 备份 %s 失败: %v\n", dest, err)
 				}
@@ -238,6 +273,9 @@ func RunGuard(cmdName string, args []string) {
 					continue
 				}
 				if !info.IsDir() {
+					if verbose {
+						fmt.Printf("[cmdguard] 备份: %s\n", t)
+					}
 					if _, err := v.SaveFile(backupDir, t); err != nil {
 						fmt.Fprintf(os.Stderr, "[cmdguard] 警告: 备份 %s 失败: %v\n", t, err)
 					}
@@ -250,18 +288,26 @@ func RunGuard(cmdName string, args []string) {
 			logger.Append(entry)
 		}
 
+		if verbose {
+			fmt.Printf("[cmdguard] 执行: %s %s\n", cmdName, strings.Join(args, " "))
+		}
+
 		// Execute the original command
-		execOriginal(cmdName, args)
+		execOriginal(cmdName, args, verbose)
 	}
 }
 
 // execOriginal executes the original system command
-func execOriginal(cmdName string, args []string) {
+func execOriginal(cmdName string, args []string, verbose bool) {
 	// Find the real command in PATH
 	realCmd, err := findRealCommand(cmdName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[cmdguard] 错误: 找不到命令 '%s': %v\n", cmdName, err)
 		os.Exit(1)
+	}
+
+	if verbose {
+		fmt.Printf("[cmdguard] 实际命令: %s %s\n", realCmd, strings.Join(args, " "))
 	}
 
 	// Execute using exec.Command
@@ -324,6 +370,7 @@ func printGuardHelp(cmdName string) {
 选项:
   --check       验证 cmdguard 防护是否生效
   --dry-run     预览匹配结果，不执行（确认规则匹配是否符合预期）
+  --verbose     显示详细执行信息（匹配规则、备份路径、实际命令等）
   --version     显示版本信息（含底层命令版本）
   --help        显示帮助信息（含底层命令帮助）
 
