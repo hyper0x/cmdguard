@@ -86,11 +86,15 @@ func RunInit(args []string) {
 	// 1. Create directory structure
 	dirs := []string{cfgDir, binDir, logDir, vaultDir}
 	for _, d := range dirs {
-		if err := os.MkdirAll(d, 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "[cmdguard] 错误: 创建目录 %s 失败: %v\n", d, err)
-			os.Exit(1)
+		if info, err := os.Stat(d); err == nil && info.IsDir() {
+			fmt.Printf("• 目录已存在 %s\n", d)
+		} else {
+			if err := os.MkdirAll(d, 0755); err != nil {
+				fmt.Fprintf(os.Stderr, "[cmdguard] 错误: 创建目录 %s 失败: %v\n", d, err)
+				os.Exit(1)
+			}
+			fmt.Printf("✓ 创建目录 %s\n", d)
 		}
-		fmt.Printf("✓ 创建目录 %s\n", d)
 	}
 
 	// 2. Collect files to backup (only when --force and they exist)
