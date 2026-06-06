@@ -2,7 +2,7 @@
 
 # cmdguard
 
-**命令防护工具** — 为 `rm`、`mv`、`chmod` 提供安全防护、自动备份和撤销恢复
+**命令防护工具** — 为 `rm`、`mv`、`chmod` 提供安全防护、自动备份和操作撤销。
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/hyper0x/cmdguard)](https://goreportcard.com/report/github.com/hyper0x/cmdguard)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
