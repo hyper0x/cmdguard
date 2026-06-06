@@ -119,6 +119,15 @@ cmdguard 提供四级防护，按严格程度降序排列：
 
 路径：`~/.cmdguard/config.toml`
 
+> **环境变量：** `CMDGUARD_CONFIG_DIR` 可自定义配置目录（含 `config.toml`、`log/`、`vault/`、`bin/`）。设置后，所有路径均以此目录为根。例如：
+> ```bash
+> export CMDGUARD_CONFIG_DIR=/data/cmdguard
+> # 配置文件 → /data/cmdguard/config.toml
+> # 日志目录 → /data/cmdguard/log/
+> # vault目录 → /data/cmdguard/vault/
+> # 包装脚本 → /data/cmdguard/bin/
+> ```
+
 ### 基本结构
 
 ```toml
@@ -190,9 +199,9 @@ rm -rf ~/Downloads/temp
 | 选项 | 说明 |
 |:----|:----|
 | `--check` | 验证 cmdguard 防护是否生效（不会执行真实命令） |
-| `--dry-run` | 预览匹配结果，不执行 |
-| `--version` | 显示 cmdguard 版本信息 |
-| `--help` | 显示 cmdguard 帮助（含保护级别说明） |
+| `--dry-run` | 预览匹配结果，不执行（确认规则匹配是否符合预期后再实际执行） |
+| `--version` | 显示 cmdguard 版本信息，同时显示底层命令版本 |
+| `--help` | 显示 cmdguard 帮助（含保护级别说明），同时显示底层命令帮助 |
 
 示例：
 
@@ -201,9 +210,19 @@ rm -rf ~/Downloads/temp
 rm --check
 # 输出: [cmdguard] 防护已生效 — rm 正在通过 cmdguard 运行
 
-# 查看版本
+# 查看版本（同时显示 cmdguard 和底层 rm 版本）
 rm --version
-# 输出: cmdguard 0.3.0 (commit: abc1234)
+# cmdguard 0.3.0 (commit: abc1234)
+# rm (GNU coreutils) 9.2
+# ...
+
+# 预览匹配结果
+rm --dry-run -rf ~/Downloads/temp
+# [cmdguard] ⚠️ 匹配规则: ~/Downloads/**
+# [cmdguard] --dry-run 模式，未执行任何操作
+
+# 查看帮助（同时显示 cmdguard 和底层 rm 帮助）
+rm --help
 ```
 
 ### `cmdguard init [--force]`

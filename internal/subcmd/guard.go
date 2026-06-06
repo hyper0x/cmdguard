@@ -27,10 +27,23 @@ func RunGuard(cmdName string, args []string) {
 		case "--dry-run":
 			dryRun = true
 		case "--version":
-			fmt.Printf("cmdguard %s (commit: %s)\n", Version, Commit)
+			fmt.Printf("cmdguard %s (commit: %s)\n\n", Version, Commit)
+			// Also show underlying command version (silently skip if unsupported)
+			if realCmd, err := findRealCommand(cmdName); err == nil {
+				if output, err := exec.Command(realCmd, "--version").Output(); err == nil {
+					os.Stdout.Write(output)
+				}
+			}
 			os.Exit(0)
 		case "--help":
 			printGuardHelp(cmdName)
+			fmt.Println()
+			// Also show underlying command help (silently skip if unsupported)
+			if realCmd, err := findRealCommand(cmdName); err == nil {
+				if output, err := exec.Command(realCmd, "--help").Output(); err == nil {
+					os.Stdout.Write(output)
+				}
+			}
 			os.Exit(0)
 		}
 	}
@@ -310,9 +323,9 @@ func printGuardHelp(cmdName string) {
 
 选项:
   --check       验证 cmdguard 防护是否生效
-  --dry-run     预览匹配结果，不执行
-  --version     显示版本信息
-  --help        显示帮助信息
+  --dry-run     预览匹配结果，不执行（确认规则匹配是否符合预期）
+  --version     显示版本信息（含底层命令版本）
+  --help        显示帮助信息（含底层命令帮助）
 
 保护级别:
   reject           🚫  直接拒绝，不执行
