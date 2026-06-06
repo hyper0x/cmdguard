@@ -22,6 +22,7 @@ func RunUndo(args []string) {
 	// Check if we have piped input or --id
 	id := ""
 	interactive := true
+	dryRun := false
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -33,6 +34,8 @@ func RunUndo(args []string) {
 			}
 		case "--interactive":
 			interactive = true
+		case "--dry-run":
+			dryRun = true
 		}
 	}
 
@@ -72,7 +75,7 @@ func RunUndo(args []string) {
 
 	if id != "" {
 		// Direct undo by ID
-		undoByID(logger, id)
+		undoByID(logger, id, dryRun)
 		return
 	}
 
@@ -110,7 +113,7 @@ func RunUndo(args []string) {
 			return
 		}
 
-		undoByID(logger, selected.ID)
+		undoByID(logger, selected.ID, dryRun)
 		return
 	}
 
@@ -121,7 +124,7 @@ func RunUndo(args []string) {
 }
 
 // undoByID restores a single operation by its log ID
-func undoByID(logger *log.Log, id string) {
+func undoByID(logger *log.Log, id string, dryRun bool) {
 	entry := logger.FindByID(id)
 	if entry == nil {
 		fmt.Fprintf(os.Stderr, "[cmdguard] 未找到 ID 为 '%s' 的操作记录\n", id)
@@ -154,6 +157,16 @@ func undoByID(logger *log.Log, id string) {
 	if backupDir == "" {
 		fmt.Fprintf(os.Stderr, "[cmdguard] 未找到 ID 为 '%s' 的 vault 备份\n", id)
 		os.Exit(1)
+	}
+
+	// Check if dry-run
+	if dryRun {
+		fmt.Printf("[cmdguard] 将恢复以下文件:\n")
+		targets := strings.Split(entry.Targets, ", ")
+		for _, t := range targets {
+			fmt.Printf("  - %s\n", t)
+		}
+		return
 	}
 
 	// Restore files
