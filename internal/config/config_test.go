@@ -66,7 +66,7 @@ func TestDefaultConfig_CommandMapEmpty(t *testing.T) {
 
 func TestConfigDir_Default(t *testing.T) {
 	// Unset env var
-	os.Unsetenv("CMGGUARD_CONFIG_DIR")
+	os.Unsetenv("CMDGUARD_CONFIG_DIR")
 	home, _ := os.UserHomeDir()
 	want := filepath.Join(home, ".cmdguard")
 	got := ConfigDir()
@@ -76,8 +76,8 @@ func TestConfigDir_Default(t *testing.T) {
 }
 
 func TestConfigDir_EnvOverride(t *testing.T) {
-	os.Setenv("CMGGUARD_CONFIG_DIR", "/tmp/test-cmdguard")
-	defer os.Unsetenv("CMGGUARD_CONFIG_DIR")
+	os.Setenv("CMDGUARD_CONFIG_DIR", "/tmp/test-cmdguard")
+	defer os.Unsetenv("CMDGUARD_CONFIG_DIR")
 	got := ConfigDir()
 	if got != "/tmp/test-cmdguard" {
 		t.Errorf("ConfigDir() = %q, want /tmp/test-cmdguard", got)
@@ -195,8 +195,8 @@ func TestGetProtectRules_DifferentCommands(t *testing.T) {
 
 func TestLoad_ConfigNotFound(t *testing.T) {
 	// Point to a non-existent config dir
-	os.Setenv("CMGGUARD_CONFIG_DIR", "/tmp/cmdguard-test-nonexistent")
-	defer os.Unsetenv("CMGGUARD_CONFIG_DIR")
+	os.Setenv("CMDGUARD_CONFIG_DIR", "/tmp/cmdguard-test-nonexistent")
+	defer os.Unsetenv("CMDGUARD_CONFIG_DIR")
 
 	cfg, err := Load()
 	if err != nil {
@@ -209,8 +209,8 @@ func TestLoad_ConfigNotFound(t *testing.T) {
 
 func TestLoad_InvalidToml(t *testing.T) {
 	dir := t.TempDir()
-	os.Setenv("CMGGUARD_CONFIG_DIR", dir)
-	defer os.Unsetenv("CMGGUARD_CONFIG_DIR")
+	os.Setenv("CMDGUARD_CONFIG_DIR", dir)
+	defer os.Unsetenv("CMDGUARD_CONFIG_DIR")
 
 	os.WriteFile(filepath.Join(dir, "config.toml"), []byte("invalid [[[toml"), 0644)
 
@@ -222,8 +222,8 @@ func TestLoad_InvalidToml(t *testing.T) {
 
 func TestLoad_ValidConfig(t *testing.T) {
 	dir := t.TempDir()
-	os.Setenv("CMGGUARD_CONFIG_DIR", dir)
-	defer os.Unsetenv("CMGGUARD_CONFIG_DIR")
+	os.Setenv("CMDGUARD_CONFIG_DIR", dir)
+	defer os.Unsetenv("CMDGUARD_CONFIG_DIR")
 
 	configContent := `
 [protect]

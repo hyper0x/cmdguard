@@ -359,7 +359,7 @@ rm /usr/local/bin/cmdguard
 
 ---
 
-## 相关项目
+## 灵感来源
 
 - [safe-rm](https://github.com/kaelzhang/shell-safe-rm) — 一个更简单的 rm 安全包装
 - [trash-cli](https://github.com/andreafrancia/trash-cli) — 将文件移动到回收站
