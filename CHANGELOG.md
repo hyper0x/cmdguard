@@ -9,7 +9,7 @@
 - 环境变量名 `CMGGUARD_CONFIG_DIR` → `CMDGUARD_CONFIG_DIR`
 - 完善文档：设计思路、人类与 AI 智能体防护
 - 新增 GitHub Actions：CI（go vet + go test）、Release（交叉编译 + 自动发布）
-- 新增 `--cmdguard-check` 标志，用于验证 alias 是否生效
+- 新增 `--check` 标志，用于验证 alias 是否生效
 
 ## v0.1.0 (2026-06-06)
 
