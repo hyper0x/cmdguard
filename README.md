@@ -185,6 +185,27 @@ alias rm='cmdguard rm'
 rm -rf ~/Downloads/temp
 ```
 
+**特殊选项：**
+
+| 选项 | 说明 |
+|:----|:----|
+| `--check` | 验证 cmdguard 防护是否生效（不会执行真实命令） |
+| `--dry-run` | 预览匹配结果，不执行 |
+| `--version` | 显示 cmdguard 版本信息 |
+| `--help` | 显示 cmdguard 帮助（含保护级别说明） |
+
+示例：
+
+```bash
+# 验证 alias 是否生效
+rm --check
+# 输出: [cmdguard] 防护已生效 — rm 正在通过 cmdguard 运行
+
+# 查看版本
+rm --version
+# 输出: cmdguard 0.3.0 (commit: abc1234)
+```
+
 ### `cmdguard init [--force]`
 
 初始化环境。幂等安全，可重复执行。
