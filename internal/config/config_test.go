@@ -46,8 +46,8 @@ func TestDefaultConfig_HasRejectRules(t *testing.T) {
 
 func TestDefaultConfig_HasVaultDefaults(t *testing.T) {
 	cfg := DefaultConfig()
-	if cfg.Vault.RetentionDays != 30 {
-		t.Errorf("Default retention_days = %d, want 30", cfg.Vault.RetentionDays)
+	if cfg.Vault.RetentionDays != 7 {
+		t.Errorf("Default retention_days = %d, want 7", cfg.Vault.RetentionDays)
 	}
 	if !cfg.Vault.AutoPurge {
 		t.Error("Default auto_purge should be true")
@@ -153,7 +153,7 @@ func TestGetProtectRules_GlobalOnly(t *testing.T) {
 func TestGetProtectRules_WithCommandOverride(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Protect.Command["rm"] = ProtectConfig{
-		Reject: []string{"~/Documents/不许删"},
+		Reject: []string{"~/Documents/forbidden-to-delete"},
 	}
 	rules := cfg.GetProtectRules("rm")
 	// Should have global rules + command rules
@@ -167,7 +167,7 @@ func TestGetProtectRules_WithCommandOverride(t *testing.T) {
 func TestGetProtectRules_DifferentCommands(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Protect.Command["rm"] = ProtectConfig{
-		Reject: []string{"~/Documents/不许删"},
+		Reject: []string{"~/Documents/forbidden-to-delete"},
 	}
 	cfg.Protect.Command["mv"] = ProtectConfig{
 		Reject: []string{"~/Projects/important"},
@@ -272,5 +272,150 @@ auto_purge = false
 	}
 	if len(rmPC.Reject) != 1 || rmPC.Reject[0] != "~/custom-rm/**" {
 		t.Errorf("rm reject = %v, want [~/custom-rm/**]", rmPC.Reject)
+	}
+}
+
+// TestLoad_FileProtectReplacesDefault verifies that when the file defines
+// a [protect] section, the file's rules are the single source of truth
+// (defaults are NOT merged).
+func TestLoad_FileProtectReplacesDefault(t *testing.T) {
+	dir := t.TempDir()
+	os.Setenv("CMDGUARD_CONFIG_DIR", dir)
+	defer os.Unsetenv("CMDGUARD_CONFIG_DIR")
+
+	// File only defines confirm, no reject at all
+	configContent := `
+[protect]
+confirm = ["~/my-only-rule/**"]
+`
+	os.WriteFile(filepath.Join(dir, "config.toml"), []byte(configContent), 0644)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	// Must NOT have default reject rules (e.g. /var/**)
+	if len(cfg.Protect.Reject) != 0 {
+		t.Errorf("Reject should be empty (file didn't define it), got %d rules: %v",
+			len(cfg.Protect.Reject), cfg.Protect.Reject)
+	}
+	// Must have exactly the one confirm rule from the file
+	if len(cfg.Protect.Confirm) != 1 || cfg.Protect.Confirm[0] != "~/my-only-rule/**" {
+		t.Errorf("Confirm = %v, want [~/my-only-rule/**]", cfg.Protect.Confirm)
+	}
+}
+
+// TestLoad_NoProtectSection_FallsBackToDefaults verifies that when the
+// file exists but has no [protect] section, the built-in defaults are used.
+func TestLoad_NoProtectSection_FallsBackToDefaults(t *testing.T) {
+	dir := t.TempDir()
+	os.Setenv("CMDGUARD_CONFIG_DIR", dir)
+	defer os.Unsetenv("CMDGUARD_CONFIG_DIR")
+
+	// File only defines vault, no protect at all
+	configContent := `
+[vault]
+retention_days = 7
+auto_purge = false
+`
+	os.WriteFile(filepath.Join(dir, "config.toml"), []byte(configContent), 0644)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	// Must have default reject rules (fallback)
+	if len(cfg.Protect.Reject) == 0 {
+		t.Fatal("Reject should have default rules when [protect] is absent")
+	}
+	// Must have default confirm_double rules
+	if len(cfg.Protect.ConfirmDouble) == 0 {
+		t.Fatal("ConfirmDouble should have default rules when [protect] is absent")
+	}
+	// Vault should come from the file
+	if cfg.Vault.RetentionDays != 7 {
+		t.Errorf("RetentionDays = %d, want 7 (from file)", cfg.Vault.RetentionDays)
+	}
+	if cfg.Vault.AutoPurge {
+		t.Error("AutoPurge should be false (from file)")
+	}
+}
+
+// TestLoad_VaultFieldLevelMerge verifies that only the specific vault
+// keys written in the file override defaults; omitted keys keep defaults.
+func TestLoad_VaultFieldLevelMerge(t *testing.T) {
+	dir := t.TempDir()
+	os.Setenv("CMDGUARD_CONFIG_DIR", dir)
+	defer os.Unsetenv("CMDGUARD_CONFIG_DIR")
+
+	// Only set retention_days, omit auto_purge
+	configContent := `
+[vault]
+retention_days = 7
+`
+	os.WriteFile(filepath.Join(dir, "config.toml"), []byte(configContent), 0644)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	if cfg.Vault.RetentionDays != 7 {
+		t.Errorf("RetentionDays = %d, want 7", cfg.Vault.RetentionDays)
+	}
+	// auto_purge was NOT in the file, must keep default (true)
+	if !cfg.Vault.AutoPurge {
+		t.Error("AutoPurge should be true (default), got false")
+	}
+}
+
+// TestLoad_GuardFieldLevelMerge verifies that only the specific guard
+// keys written in the file override defaults; omitted keys keep defaults.
+func TestLoad_GuardFieldLevelMerge(t *testing.T) {
+	dir := t.TempDir()
+	os.Setenv("CMDGUARD_CONFIG_DIR", dir)
+	defer os.Unsetenv("CMDGUARD_CONFIG_DIR")
+
+	// Only set confirm_timeout, omit confirm_double_timeout
+	configContent := `
+[guard]
+confirm_timeout = 15
+`
+	os.WriteFile(filepath.Join(dir, "config.toml"), []byte(configContent), 0644)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	if cfg.Guard.ConfirmTimeout != 15 {
+		t.Errorf("ConfirmTimeout = %d, want 15", cfg.Guard.ConfirmTimeout)
+	}
+	// confirm_double_timeout was NOT in the file, must keep default (10)
+	if cfg.Guard.ConfirmDoubleTimeout != 10 {
+		t.Errorf("ConfirmDoubleTimeout = %d, want 10 (default)", cfg.Guard.ConfirmDoubleTimeout)
+	}
+}
+func TestLoad_EmptyProtectSection_NoDefaults(t *testing.T) {
+	dir := t.TempDir()
+	os.Setenv("CMDGUARD_CONFIG_DIR", dir)
+	defer os.Unsetenv("CMDGUARD_CONFIG_DIR")
+
+	configContent := `
+[protect]
+`
+	os.WriteFile(filepath.Join(dir, "config.toml"), []byte(configContent), 0644)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	// An empty [protect] section has no defined keys, so it falls back to defaults.
+	// This is debatable — but consistent: the file doesn't define any key.
+	if len(cfg.Protect.Reject) == 0 {
+		t.Fatal("Reject should have default rules when [protect] has no keys")
 	}
 }

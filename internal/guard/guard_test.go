@@ -140,7 +140,7 @@ func TestCheck_CommandOverride(t *testing.T) {
 			Reject: []string{"/etc/**"},
 			Command: map[string]config.ProtectConfig{
 				"rm": {
-					Reject: []string{"~/Documents/不许删"},
+					Reject: []string{"~/Documents/forbidden-to-delete"},
 				},
 			},
 		},
@@ -151,12 +151,12 @@ func TestCheck_CommandOverride(t *testing.T) {
 		t.Errorf("Global reject should still apply, got %s", result.Action)
 	}
 	// Command-specific rule should also apply
-	result2 := Check(cfg, "rm", []string{"~/Documents/不许删"})
+	result2 := Check(cfg, "rm", []string{"~/Documents/forbidden-to-delete"})
 	if result2.Action != "reject" {
 		t.Errorf("Command-specific reject should apply, got %s", result2.Action)
 	}
 	// Other command should not have the override
-	result3 := Check(cfg, "mv", []string{"~/Documents/不许删"})
+	result3 := Check(cfg, "mv", []string{"~/Documents/forbidden-to-delete"})
 	if result3.Action == "reject" {
 		t.Error("mv should not be affected by rm-specific rule")
 	}

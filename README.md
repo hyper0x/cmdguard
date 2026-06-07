@@ -2,32 +2,35 @@
 
 # cmdguard
 
-**命令防护工具** — 为 `rm`、`mv`、`chmod` 提供安全防护、自动备份和操作撤销。
+**Command protection tool** — guards `rm`, `mv`, `chmod` with confirmation, automatic backup, and undo.
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/hyper0x/cmdguard)](https://goreportcard.com/report/github.com/hyper0x/cmdguard)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+[简体中文](README.zh.md)
 
 </div>
 
 ---
 
-## 概述
+## Overview
 
-cmdguard 包装危险命令（`rm`、`mv`、`chmod`），防止误操作导致数据丢失。
+cmdguard wraps dangerous commands (`rm`, `mv`, `chmod`) to prevent accidental data loss.
 
-- 🚫 **三级防护** — reject（拒绝）、confirm/confirm_double（确认）、warn（警告）
-- 💾 **自动备份** — 执行危险操作前自动备份到 vault
-- ↩️ **撤销恢复** — 通过 `undo` 恢复被删除/覆盖的文件
-- 📋 **审计日志** — 所有操作永久记录，支持搜索和过滤
-- ⚙️ **灵活配置** — TOML 格式，glob 路径模式
+- 🚫 **Four protection levels** — reject, confirm_double, confirm, warn
+- 💾 **Automatic backup** — files are copied to a vault before destructive ops
+- ↩️ **Undo** — restore deleted or overwritten files via `cmdguard undo`
+- 📋 **Audit log** — every operation is recorded permanently; searchable & filterable
+- 🤖 **Agent-aware** — explicit handling for AI agents and automation (see below)
+- ⚙️ **TOML config** — glob path patterns, per-command overrides
 
 ---
 
-## 设计思路
+## Design
 
-### 防护人类误操作
+### Protecting humans
 
-在 `~/.zshrc` 或 `~/.bashrc` 中添加 alias：
+Add aliases to `~/.zshrc` or `~/.bashrc`:
 
 ```bash
 alias rm='cmdguard rm'
@@ -35,132 +38,183 @@ alias mv='cmdguard mv'
 alias chmod='cmdguard chmod'
 ```
 
-### 防护 AI 智能体误操作
+### Protecting AI agents
 
-将 `~/.cmdguard/bin/` 放到 PATH 最前面：
+Put `~/.cmdguard/bin/` at the front of `PATH` so the agent's `rm`/`mv`/`chmod`
+lookups hit cmdguard's wrappers:
 
 ```bash
 export PATH="$HOME/.cmdguard/bin:$PATH"
+export CMDGUARD_NONINTERACTIVE=1   # skip the 5s/10s confirm wait
 ```
 
-### 防护不到的情况
+Both methods can coexist.
 
-无法拦截直接使用绝对路径的调用（如 `/bin/rm`）。cmdguard 的定位是"防护 + 审计 + 可恢复"，不是"绝对拦截"。
+### What cmdguard does NOT do
 
-两种方式可以同时使用，不会冲突。
+cmdguard cannot intercept calls that bypass `PATH` lookup, e.g. `/bin/rm /etc/passwd`.
+The model is "protect + audit + recoverable", not "absolute lockdown".
 
 ---
 
-## 快速开始
+## AI agent usage
 
-### 安装
+When an AI agent invokes a guarded command and the target is a protected
+path, cmdguard refuses to hang on an interactive prompt. The agent must:
+
+1. **Set the env var** to declare itself non-interactive:
+   ```bash
+   export CMDGUARD_NONINTERACTIVE=1
+   ```
+   This skips the 5s/10s wait at confirm prompts. It does **NOT** grant
+   permission — the operation is still rejected.
+
+2. **If the operation is genuinely safe**, retry with a `--bypass` identifier:
+   ```bash
+   rm /path/to/file --bypass=<host>/<platform>/<agent>/<task>
+   ```
+   The identifier must have exactly 4 segments:
+
+   | segment  | meaning                       | example                |
+   |----------|-------------------------------|------------------------|
+   | host     | machine hostname / alias      | `mac-studio`           |
+   | platform | agent platform                | `qwenpaw`, `cursor`    |
+   | agent    | agent id                      | `ai_research`          |
+   | task     | brief task slug               | `cleanup-tmp-dirs`     |
+
+   Allowed characters: `[a-zA-Z0-9._-]`. Empty segments, angle brackets,
+   and template placeholder words (`host`, `agent`, `task`, `xxx`, `foo`,
+   `todo`, ...) are rejected.
+
+Every bypass is recorded in the audit log with the full identifier, so
+the audit trail attributes every protected-path operation back to a
+specific agent / task.
+
+See [docs/commands.md](docs/commands.md#--bypass) for full details.
+
+---
+
+## Quick start
+
+### Install
 
 ```bash
-# 方式一：下载预编译二进制（推荐）
-# 从 Releases 页面下载对应平台的二进制
+# Option 1 — pre-built binary (recommended)
+# Download from the Releases page for your platform.
 
-# 方式二：从源码编译
+# Option 2 — build from source
 git clone https://github.com/hyper0x/cmdguard.git
 cd cmdguard
-go build -o cmdguard .
-sudo mv cmdguard /usr/local/bin/
+make install   # installs to $GOBIN with version info baked in
 ```
 
-### 初始化
+### Initialize
 
 ```bash
 cmdguard init
 ```
 
-一次完成：创建目录结构 → 生成默认配置 → 创建包装脚本 → 打印集成指南。
-
-> 更多选项：`cmdguard init --force`（覆盖）、`cmdguard init --dry-run`（预览）
-> 详见 [命令参考](docs/commands.md#cmdguard-init---force---dry-run)
+Creates `~/.cmdguard/{config.toml, bin/, log/, vault/}` and prints the
+integration guide. Idempotent — re-running is safe. Use `--force` to
+overwrite (old files are zipped to `~/.cmdguard/backup/`).
 
 ---
 
-## 命令速览
+## Commands at a glance
 
-| 命令 | 说明 |
+| Command | Description |
 |:----|:----|
-| `rm/mv/chmod <args...>` | 以防护模式运行命令 |
-| `init [--force] [--dry-run]` | 初始化环境 |
-| `list [选项]` | 列出操作日志 |
-| `undo [选项]` | 恢复操作 |
-| `vault clean [--dry-run]` | 清理过期 vault 备份 |
-| `config` | 查看当前配置 |
-| `help` | 显示帮助 |
-| `version` | 显示版本 |
+| `rm/mv/chmod <args...>` | Run a command through cmdguard |
+| `init [--force] [--dry-run]` | Initialize the environment |
+| `list [options]` | List audit log entries |
+| `undo [options]` | Restore an operation from vault |
+| `vault clean [--dry-run]` | Purge expired vault backups |
+| `config` | Print the active configuration |
+| `help` / `version` | Self-explanatory |
 
-> 完整命令参考：[docs/commands.md](docs/commands.md)
+Full reference: [docs/commands.md](docs/commands.md)
 
 ---
 
-## 配置文件
+## Configuration
 
-路径：`~/.cmdguard/config.toml`（可通过 `CMDGUARD_CONFIG_DIR` 环境变量自定义）
+Location: `~/.cmdguard/config.toml` (overridable via `CMDGUARD_CONFIG_DIR`).
 
 ```toml
 [protect]
-reject = ["/etc/**", "/private/**", "~/.ssh/**"]
+reject         = ["/etc/**", "/private/**", "~/.ssh/**"]
 confirm_double = ["~/.config/**"]
-confirm = ["~/Documents/**", "~/Desktop/**"]
-warn = ["~/Downloads/**"]
+confirm        = ["~/Documents/**", "~/Desktop/**"]
+warn           = ["~/Downloads/**"]
 
 [vault]
-retention_days = 30
-auto_purge = true
+retention_days = 7
+auto_purge     = true
+
+[guard]
+confirm_timeout        = 5    # seconds; 'confirm' prompt
+confirm_double_timeout = 10   # seconds per step; 'confirm_double' prompt
 ```
 
-> 详细配置说明：[docs/configuration.md](docs/configuration.md)
+> **The config file is read-only from cmdguard's perspective.** cmdguard
+> never modifies it at runtime; only `cmdguard init --force` may overwrite
+> it (with a backup zip).
+
+Full reference: [docs/configuration.md](docs/configuration.md)
 
 ---
 
-## Vault 与撤销恢复
+## Vault & undo
 
-- 备份目录：`~/.cmdguard/vault/<操作ID>/`
-- 保留天数：默认 30 天（可配置）
-- 恢复命令：`cmdguard undo`
-- 日志：永久保留，JSON 格式，按天分文件
+- Backup directory: `~/.cmdguard/vault/<timestamp>_<id>/`
+- Retention: 30 days by default, configurable
+- Restore: `cmdguard undo [--id <id>] [--interactive] [--dry-run]`
+- Logs: permanent, JSON, one file per day
 
-> 详细说明：[docs/vault.md](docs/vault.md)
+Details: [docs/vault.md](docs/vault.md)
 
 ---
 
-## 从源码构建
+## Build from source
 
 ```bash
 git clone https://github.com/hyper0x/cmdguard.git
 cd cmdguard
-go build -ldflags "-X main.version=$(git describe --tags 2>/dev/null || echo 'dev') -X main.commit=$(git rev-parse --short HEAD)" -o cmdguard .
+make build    # build into ./dist with version from git tag
+make install  # install to $GOBIN
 ```
 
 ---
 
-## 常见问题
+## FAQ
 
-### Q: 绕过 cmdguard 怎么办？
+**Can cmdguard be bypassed?**
+Yes. `/bin/rm /etc/passwd` skips the PATH lookup entirely. cmdguard is
+protection + audit + recovery, not an absolute lockdown.
 
-cmdguard 是"防护 + 审计 + 可恢复"，不是"绝对拦截"。刻意绕过（如 `/bin/rm`）无法阻止。
+**What's the difference between `confirm` and `confirm_double`?**
+`confirm` requires a single `y`. `confirm_double` requires `y` first and
+then typing the full word `yes` — designed to defeat fatigue errors on
+high-risk paths.
 
-### Q: `confirm_double` 和 `confirm` 有什么区别？
+**What if my config file gets overwritten?**
+`cmdguard init` never overwrites without `--force`. With `--force`, the
+old file is preserved at `~/.cmdguard/backup/init-<timestamp>.zip`.
 
-`confirm_double` 需要两次确认，第二次必须完整输入 `yes`，防止疲劳误按。
+**Where do agents put `CMDGUARD_NONINTERACTIVE`?**
+In the agent's shell init or wherever the agent's environment is set up.
+Once exported, every cmdguard call in that environment skips the wait
+and goes straight to the bypass-or-reject path.
 
-### Q: 配置文件被覆盖了怎么办？
-
-`cmdguard init` 不会覆盖已有配置（除非 `--force`）。`--force` 时旧文件打包到 `~/.cmdguard/backup/init-<时间戳>.zip`。
-
-### Q: 如何完全卸载？
-
+**How do I uninstall?**
 ```bash
-# 从 shell 配置中移除 alias/PATH 设置
-rm -rf ~/.cmdguard
-rm /usr/local/bin/cmdguard
+# Remove the alias / PATH line from your shell rc, then:
+trash ~/.cmdguard         # or rm -rf if you don't have trash
+rm $(which cmdguard)
 ```
 
 ---
 
-## 许可证
+## License
 
 [MIT](LICENSE)

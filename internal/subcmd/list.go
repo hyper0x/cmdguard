@@ -1,6 +1,7 @@
 package subcmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -8,13 +9,14 @@ import (
 	"time"
 
 	"github.com/hyper0x/cmdguard/internal/log"
+	"github.com/hyper0x/cmdguard/internal/msg"
 )
 
 // RunList handles the "list" command
 func RunList(args []string) {
 	logger, err := log.New()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[cmdguard] 错误: %v\n", err)
+		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrLogLoad)+"\n", err)
 		os.Exit(1)
 	}
 
@@ -22,7 +24,6 @@ func RunList(args []string) {
 		Recent: 20, // default
 	}
 
-	// Parse arguments
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--recent":
@@ -56,11 +57,10 @@ func RunList(args []string) {
 	entries := logger.Search(q)
 
 	if len(entries) == 0 {
-		fmt.Println("[cmdguard] 没有找到匹配的操作记录")
+		fmt.Println(msg.ListNoResults)
 		return
 	}
 
-	// Check if --json flag is set
 	jsonOutput := false
 	for _, arg := range args {
 		if arg == "--json" {
@@ -70,24 +70,23 @@ func RunList(args []string) {
 	}
 
 	if jsonOutput {
-		// JSON output — full ID for pipe to undo
-		fmt.Print("[")
-		for i, e := range entries {
-			if i > 0 {
-				fmt.Print(",")
-			}
-			fmt.Printf(`{"id":"%s","time":"%s","cmd":"%s","action":"%s","targets":"%s"}`,
-				e.ID, e.Timestamp, e.Command, e.Action, e.Targets)
+		// Use encoding/json so the output:
+		//  - uses the Entry struct's json tags (id, timestamp, command, ...)
+		//  - includes every field, notably Bypass (audit trail)
+		//  - escapes targets/messages correctly
+		data, err := json.Marshal(entries)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, msg.FmtErr("failed to encode log entries: %v")+"\n", err)
+			os.Exit(1)
 		}
-		fmt.Println("]")
+		fmt.Println(string(data))
 	} else {
-		// Table output — truncated ID for readability
-		fmt.Printf("%-8s  %-19s  %-6s  %-8s  %s\n", "ID", "时间", "命令", "动作", "目标路径")
-		fmt.Println(strings.Repeat("-", 80))
+		fmt.Printf(msg.ListTableHeader, "ID", "Time", "Cmd", "Action", "Target")
+		fmt.Println(msg.ListTableSeparator)
 		for _, e := range entries {
 			expired := ""
 			if e.Expired {
-				expired = " [expired]"
+				expired = msg.ListExpiredTag
 			}
 			ts := e.Timestamp
 			if len(ts) > 19 {
@@ -97,8 +96,12 @@ func RunList(args []string) {
 			if len(shortID) > 8 {
 				shortID = shortID[:8]
 			}
-			fmt.Printf("%-8s  %-19s  %-6s  %-8s  %s%s\n",
-				shortID, ts, e.Command, e.Action, e.Targets, expired)
+			bypassTag := ""
+			if e.Bypass != "" {
+				bypassTag = fmt.Sprintf(msg.ListBypassTag, e.Bypass)
+			}
+			fmt.Printf("%-8s  %-19s  %-6s  %-8s  %s%s%s\n",
+				shortID, ts, e.Command, e.Action, e.Targets, bypassTag, expired)
 		}
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hyper0x/cmdguard/internal/config"
+	"github.com/hyper0x/cmdguard/internal/msg"
 )
 
 // Entry represents a single log entry
@@ -21,6 +22,7 @@ type Entry struct {
 	Targets   string `json:"targets"`
 	Rule      string `json:"rule,omitempty"`
 	Message   string `json:"message,omitempty"`
+	Bypass    string `json:"bypass,omitempty"`
 	Expired   bool   `json:"expired,omitempty"`
 }
 
@@ -36,7 +38,7 @@ type Log struct {
 func New() (*Log, error) {
 	dir := filepath.Join(config.ConfigDir(), "log")
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, fmt.Errorf("创建日志目录失败: %w", err)
+		return nil, fmt.Errorf(msg.ErrLogDir, err)
 	}
 
 	l := &Log{
@@ -45,7 +47,7 @@ func New() (*Log, error) {
 	}
 
 	if err := l.load(); err != nil {
-		fmt.Fprintf(os.Stderr, "[cmdguard] 警告: 加载日志失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, msg.FmtWarn(msg.ErrLogLoad)+"\n", err)
 	}
 
 	return l, nil
@@ -104,17 +106,17 @@ func (l *Log) Append(entry Entry) error {
 	// Append to today's log file
 	line, err := json.Marshal(entry)
 	if err != nil {
-		return fmt.Errorf("序列化日志失败: %w", err)
+		return fmt.Errorf(msg.ErrLogSerialize, err)
 	}
 
 	f, err := os.OpenFile(l.logFilePath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return fmt.Errorf("写入日志文件失败: %w", err)
+		return fmt.Errorf(msg.ErrLogWrite, err)
 	}
 	defer f.Close()
 
 	if _, err := f.Write(append(line, '\n')); err != nil {
-		return fmt.Errorf("写入日志行失败: %w", err)
+		return fmt.Errorf(msg.ErrLogLine, err)
 	}
 
 	return nil

@@ -12,47 +12,49 @@ import (
 	"github.com/hyper0x/cmdguard/internal/config"
 	"github.com/hyper0x/cmdguard/internal/guard"
 	"github.com/hyper0x/cmdguard/internal/log"
+	"github.com/hyper0x/cmdguard/internal/msg"
 	"github.com/hyper0x/cmdguard/internal/vault"
 )
 
 // RunGuard handles rm/mv/chmod commands
 func RunGuard(cmdName string, args []string) {
-	// Check for special flags
 	dryRun := false
 	verbose := false
+	bypassID := ""
 	filteredArgs := make([]string, 0, len(args))
+
 	for _, a := range args {
-		switch a {
-		case "--check":
-			fmt.Printf("[cmdguard] 防护已生效 — %s 正在通过 cmdguard 运行\n", cmdName)
+		switch {
+		case a == "--check":
+			fmt.Printf(msg.GuardCheckOK+"\n", cmdName)
 			os.Exit(0)
-		case "--dry-run":
+		case a == "--dry-run":
 			dryRun = true
-		case "--verbose":
+		case a == "--verbose":
 			verbose = true
-		case "--version":
+		case a == "--version":
 			if Version == "dev" {
 				fmt.Printf("cmdguard %s (commit: %s)\n\n", Version, Commit)
 			} else {
 				fmt.Printf("cmdguard %s\n\n", Version)
 			}
-			// Also show underlying command version (silently skip if unsupported)
 			if realCmd, err := findRealCommand(cmdName); err == nil {
 				if output, err := exec.Command(realCmd, "--version").Output(); err == nil {
 					os.Stdout.Write(output)
 				}
 			}
 			os.Exit(0)
-		case "--help":
-			printGuardHelp(cmdName)
+		case a == "--help":
+			fmt.Print(msg.GuardHelp(cmdName))
 			fmt.Println()
-			// Also show underlying command help (silently skip if unsupported)
 			if realCmd, err := findRealCommand(cmdName); err == nil {
 				if output, err := exec.Command(realCmd, "--help").Output(); err == nil {
 					os.Stdout.Write(output)
 				}
 			}
 			os.Exit(0)
+		case strings.HasPrefix(a, msg.GuardBypassFlag+"="):
+			bypassID = strings.TrimPrefix(a, msg.GuardBypassFlag+"=")
 		default:
 			filteredArgs = append(filteredArgs, a)
 		}
@@ -61,7 +63,7 @@ func RunGuard(cmdName string, args []string) {
 
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[cmdguard] 错误: %v\n", err)
+		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrConfigLoad)+"\n", err)
 		os.Exit(1)
 	}
 
@@ -83,12 +85,46 @@ func RunGuard(cmdName string, args []string) {
 	targets := guard.ExtractTargets(cmdName, args)
 
 	if len(targets) == 0 {
-		// No file targets, just execute the original command
 		if verbose {
-			fmt.Printf("[cmdguard] 未检测到文件路径参数，直接执行\n")
+			fmt.Println(msg.GuardNoTargets)
 		}
 		execOriginal(cmdName, args, verbose)
 		return
+	}
+
+	// Existence check.
+	//
+	// For rm/chmod: any non-existent target is a user error. We refuse
+	// to invoke the underlying command and report the missing path so
+	// the operator can correct the typo. cmdguard never silently filters
+	// the target list — the user's input is preserved as-is.
+	//
+	// For mv: the destination (last argument) typically does NOT exist
+	// (mv creates a new file). In that case there is no file to overwrite,
+	// so no protection is needed — fall through to the underlying mv.
+	// If the destination DOES exist, we keep the normal protection flow.
+	if cmdName == "mv" {
+		// guard.ExtractTargets returns only the destination for mv
+		dest := targets[0]
+		if _, err := os.Stat(dest); os.IsNotExist(err) {
+			if verbose {
+				fmt.Println(msg.GuardMvDestNew)
+			}
+			execOriginal(cmdName, args, verbose)
+			return
+		}
+	} else {
+		// rm / chmod: every target must exist
+		missing := false
+		for _, t := range targets {
+			if _, err := os.Stat(t); os.IsNotExist(err) {
+				fmt.Fprintf(os.Stderr, msg.GuardTargetMissing+"\n", cmdName, t)
+				missing = true
+			}
+		}
+		if missing {
+			os.Exit(1)
+		}
 	}
 
 	// Check protection rules
@@ -96,24 +132,24 @@ func RunGuard(cmdName string, args []string) {
 
 	if verbose {
 		if result.Rule != "" {
-			fmt.Printf("[cmdguard] 匹配规则: %s (级别: %s)\n", result.Rule, result.Action)
+			fmt.Printf(msg.GuardRuleMatched+"\n", result.Rule, result.Action)
 		} else {
-			fmt.Printf("[cmdguard] 未匹配任何规则\n")
+			fmt.Println(msg.GuardNoRule)
 		}
 		if result.Message != "" {
-			fmt.Printf("[cmdguard] %s\n", result.Message)
+			fmt.Printf("%s\n", result.Message)
 		}
 	}
 
 	switch result.Action {
-	case "reject":
+	case msg.LevelReject:
 		guard.PrintWarning(cmdName, result)
 		if verbose {
-			fmt.Printf("[cmdguard] 已拒绝执行\n")
+			fmt.Println(msg.GuardRejected)
 		}
 		logEntry := log.Entry{
 			Command: cmdName,
-			Action:  "reject",
+			Action:  msg.LevelReject,
 			Targets: strings.Join(targets, ", "),
 			Rule:    result.Rule,
 			Message: result.Message,
@@ -123,108 +159,148 @@ func RunGuard(cmdName string, args []string) {
 		}
 		os.Exit(1)
 
-	case "confirm_double":
+	case msg.LevelConfirmDbl, msg.LevelConfirm:
+		// --bypass overrides interactive confirmation.
+		// We do NOT log here — the unified entry (with Bypass field) is
+		// written later in the backup+execute flow to avoid duplication.
+		if bypassID != "" {
+			if !msg.ValidateBypass(bypassID) {
+				fmt.Fprintf(os.Stderr, msg.GuardBypassInvalid+"\n",
+					bypassID,
+					cmdName+" "+strings.Join(args, " "))
+				logEntry := log.Entry{
+					Command: cmdName,
+					Action:  msg.LevelReject,
+					Targets: strings.Join(targets, ", "),
+					Rule:    result.Rule,
+					Message: fmt.Sprintf(msg.GuardBypassInvalidMsg, bypassID),
+				}
+				if logger, err := log.New(); err == nil {
+					logger.Append(logEntry)
+				}
+				os.Exit(1)
+			}
+			guard.PrintWarning(cmdName, result)
+			// Fall through to backup + execute
+			break
+		}
+
+		// Non-TTY mode: reject with guidance.
+		// Two ways to detect non-interactive:
+		//   1. CMDGUARD_NONINTERACTIVE env var is set (explicit, preferred for agents)
+		//   2. stdin is not a TTY (e.g. piped, redirected)
+		// Either signal skips the wait entirely.
+		if config.IsNonInteractive() {
+			emitNonTTYRejection(cmdName, args, targets, result, reasonEnv)
+			os.Exit(1)
+		}
+		if !isTerminal() {
+			emitNonTTYRejection(cmdName, args, targets, result, reasonNonTTY)
+			os.Exit(1)
+		}
+
+		// Interactive confirmation
 		guard.PrintWarning(cmdName, result)
 		if dryRun {
-			fmt.Printf("[cmdguard] 将备份后执行 %s（需要双层确认）\n", cmdName)
+			fmt.Printf(msg.GuardDryRunBackup+"\n", cmdName)
 			os.Exit(0)
 		}
-		fmt.Fprintf(os.Stderr, "是否继续? (y/N): ")
-		reader := bufio.NewReader(os.Stdin)
-		answer, _ := reader.ReadString('\n')
+
+		// Pick the per-level timeout from config.
+		timeout := cfg.Guard.ConfirmTimeout
+		if result.Action == msg.LevelConfirmDbl {
+			timeout = cfg.Guard.ConfirmDoubleTimeout
+		}
+
+		// Hint: which keys to press, including timeout duration
+		if timeout <= 0 {
+			fmt.Fprintln(os.Stderr, msg.ConfirmTimeoutDisabled)
+		}
+		if result.Action == msg.LevelConfirmDbl {
+			fmt.Fprintf(os.Stderr, msg.ConfirmDoubleHint+"\n", timeout)
+		} else {
+			fmt.Fprintf(os.Stderr, msg.ConfirmHint+"\n", timeout)
+		}
+
+		// First confirmation (with timeout fallback to non-TTY rejection)
+		fmt.Fprint(os.Stderr, msg.ConfirmPrompt)
+		answer, timedOut := readLineWithTimeout(timeout)
+		if timedOut {
+			emitNonTTYRejectionTimeout(cmdName, args, targets, result, timeout)
+			os.Exit(1)
+		}
 		answer = strings.TrimSpace(strings.ToLower(answer))
 		if answer != "y" && answer != "yes" {
-			fmt.Fprintln(os.Stderr, "[cmdguard] 已取消")
+			fmt.Fprintln(os.Stderr, msg.ConfirmCancelled)
 			logEntry := log.Entry{
 				Command: cmdName,
-				Action:  "reject",
+				Action:  msg.LevelReject,
 				Targets: strings.Join(targets, ", "),
 				Rule:    result.Rule,
-				Message: "用户取消",
+				Message: msg.ConfirmCancelledMsg,
 			}
 			if logger, err := log.New(); err == nil {
 				logger.Append(logEntry)
 			}
 			os.Exit(1)
 		}
-		// Second confirmation — require full word "yes"
-		fmt.Fprintf(os.Stderr, "再次确认? 请输入 'yes' 确认: ")
-		answer2, _ := reader.ReadString('\n')
-		answer2 = strings.TrimSpace(strings.ToLower(answer2))
-		if answer2 != "yes" {
-			fmt.Fprintln(os.Stderr, "[cmdguard] 已取消")
-			logEntry := log.Entry{
-				Command: cmdName,
-				Action:  "reject",
-				Targets: strings.Join(targets, ", "),
-				Rule:    result.Rule,
-				Message: "用户取消（双重确认未通过）",
-			}
-			if logger, err := log.New(); err == nil {
-				logger.Append(logEntry)
-			}
-			os.Exit(1)
-		}
-		// Both confirmed, fall through to backup + execute
 
-	case "confirm":
+		// Second confirmation (only for confirm_double)
+		if result.Action == msg.LevelConfirmDbl {
+			fmt.Fprint(os.Stderr, msg.ConfirmDoublePrompt2)
+			answer2, timedOut2 := readLineWithTimeout(timeout)
+			if timedOut2 {
+				emitNonTTYRejectionTimeout(cmdName, args, targets, result, timeout)
+				os.Exit(1)
+			}
+			answer2 = strings.TrimSpace(strings.ToLower(answer2))
+			if answer2 != "yes" {
+				fmt.Fprintln(os.Stderr, msg.ConfirmCancelled)
+				logEntry := log.Entry{
+					Command: cmdName,
+					Action:  msg.LevelReject,
+					Targets: strings.Join(targets, ", "),
+					Rule:    result.Rule,
+					Message: msg.ConfirmDoubleCancelledMsg,
+				}
+				if logger, err := log.New(); err == nil {
+					logger.Append(logEntry)
+				}
+				os.Exit(1)
+			}
+		}
+		// Confirmed, fall through to backup + execute
+
+	case msg.LevelWarn:
 		guard.PrintWarning(cmdName, result)
 		if dryRun {
-			fmt.Printf("[cmdguard] 将备份后执行 %s（需要确认）\n", cmdName)
+			fmt.Printf(msg.GuardDryRunBackup+"\n", cmdName)
 			os.Exit(0)
 		}
-		fmt.Fprintf(os.Stderr, "是否继续? (y/N): ")
-		reader := bufio.NewReader(os.Stdin)
-		answer, _ := reader.ReadString('\n')
-		answer = strings.TrimSpace(strings.ToLower(answer))
-		if answer != "y" && answer != "yes" {
-			fmt.Fprintln(os.Stderr, "[cmdguard] 已取消")
-			logEntry := log.Entry{
-				Command: cmdName,
-				Action:  "reject",
-				Targets: strings.Join(targets, ", "),
-				Rule:    result.Rule,
-				Message: "用户取消",
-			}
-			if logger, err := log.New(); err == nil {
-				logger.Append(logEntry)
-			}
-			os.Exit(1)
-		}
-		// User confirmed, fall through to backup + execute
+		// Fall through to backup + execute
 
-	case "warn":
-		guard.PrintWarning(cmdName, result)
+	case msg.LevelAllow:
 		if dryRun {
-			fmt.Printf("[cmdguard] 将备份后执行 %s\n", cmdName)
+			fmt.Printf(msg.GuardNoRule+" — %s will execute directly\n", cmdName)
 			os.Exit(0)
 		}
-		// Continue to backup + execute
-
-	case "allow":
-		if dryRun {
-			fmt.Printf("[cmdguard] 无匹配规则 — %s 将直接执行\n", cmdName)
-			os.Exit(0)
-		}
-		// Log the allowed operation
 		logEntry := log.Entry{
 			Command: cmdName,
-			Action:  "allow",
+			Action:  msg.LevelAllow,
 			Targets: strings.Join(targets, ", "),
-			Message: "无匹配规则，放行",
+			Message: "no matching rule, allowed",
 		}
 		if logger, err := log.New(); err == nil {
 			logger.Append(logEntry)
 		}
-		// No protection matched, execute directly
 		execOriginal(cmdName, args, verbose)
 		return
 	}
 
 	// For confirm_double/confirm/warn: backup to vault then execute
-	if result.Action == "confirm_double" || result.Action == "confirm" || result.Action == "warn" {
+	if result.Action == msg.LevelConfirmDbl || result.Action == msg.LevelConfirm || result.Action == msg.LevelWarn {
 		if dryRun {
-			fmt.Printf("[cmdguard] 将备份以下文件到 vault 后执行 %s:\n", cmdName)
+			fmt.Printf(msg.DryRunWillBackup+"\n", cmdName)
 			for _, t := range targets {
 				fmt.Printf("  - %s\n", t)
 			}
@@ -232,7 +308,7 @@ func RunGuard(cmdName string, args []string) {
 		}
 		v, err := vault.New(&cfg.Vault)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[cmdguard] 错误: 创建 vault 失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrVaultNew)+"\n", err)
 			execOriginal(cmdName, args, verbose)
 			return
 		}
@@ -243,8 +319,8 @@ func RunGuard(cmdName string, args []string) {
 			Targets: strings.Join(targets, ", "),
 			Rule:    result.Rule,
 			Message: result.Message,
+			Bypass:  bypassID,
 		}
-		// Generate ID before using it for backup directory
 		entry.ID = fmt.Sprintf("%x", time.Now().UnixNano())[:12]
 		entry.Timestamp = time.Now().Format(time.RFC3339)
 
@@ -253,7 +329,7 @@ func RunGuard(cmdName string, args []string) {
 			allTargets := guard.ExtractAllTargets(args)
 			if len(allTargets) > 1 {
 				sources := allTargets[:len(allTargets)-1]
-				entry.Message = fmt.Sprintf("源: %s → 目标: %s", strings.Join(sources, ", "), targets[0])
+				entry.Message = fmt.Sprintf("src: %s → dst: %s", strings.Join(sources, ", "), targets[0])
 			}
 		}
 
@@ -261,7 +337,7 @@ func RunGuard(cmdName string, args []string) {
 		backupDir := v.BackupDir(entry.ID)
 
 		if verbose {
-			fmt.Printf("[cmdguard] 备份目录: %s\n", backupDir)
+			fmt.Printf(msg.VerboseBackupDir+"\n", backupDir)
 		}
 
 		if cmdName == "mv" {
@@ -269,10 +345,10 @@ func RunGuard(cmdName string, args []string) {
 			dest := targets[len(targets)-1]
 			if info, err := os.Stat(dest); err == nil && !info.IsDir() {
 				if verbose {
-					fmt.Printf("[cmdguard] 备份: %s\n", dest)
+					fmt.Printf(msg.VerboseBackupFile+"\n", dest)
 				}
 				if _, err := v.SaveFile(backupDir, dest); err != nil {
-					fmt.Fprintf(os.Stderr, "[cmdguard] 警告: 备份 %s 失败: %v\n", dest, err)
+					fmt.Fprintf(os.Stderr, msg.FmtWarn(msg.ErrVaultBackup)+"\n", dest, err)
 				}
 			}
 		} else {
@@ -284,10 +360,10 @@ func RunGuard(cmdName string, args []string) {
 				}
 				if !info.IsDir() {
 					if verbose {
-						fmt.Printf("[cmdguard] 备份: %s\n", t)
+						fmt.Printf(msg.VerboseBackupFile+"\n", t)
 					}
 					if _, err := v.SaveFile(backupDir, t); err != nil {
-						fmt.Fprintf(os.Stderr, "[cmdguard] 警告: 备份 %s 失败: %v\n", t, err)
+						fmt.Fprintf(os.Stderr, msg.FmtWarn(msg.ErrVaultBackup)+"\n", t, err)
 					}
 				}
 			}
@@ -299,28 +375,25 @@ func RunGuard(cmdName string, args []string) {
 		}
 
 		if verbose {
-			fmt.Printf("[cmdguard] 执行: %s %s\n", cmdName, strings.Join(args, " "))
+			fmt.Printf(msg.GuardExecuting+"\n", cmdName, strings.Join(args, " "))
 		}
 
-		// Execute the original command
 		execOriginal(cmdName, args, verbose)
 	}
 }
 
 // execOriginal executes the original system command
 func execOriginal(cmdName string, args []string, verbose bool) {
-	// Find the real command in PATH
 	realCmd, err := findRealCommand(cmdName)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[cmdguard] 错误: 找不到命令 '%s': %v\n", cmdName, err)
+		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrCmdNotFound)+"\n", cmdName)
 		os.Exit(1)
 	}
 
 	if verbose {
-		fmt.Printf("[cmdguard] 实际命令: %s %s\n", realCmd, strings.Join(args, " "))
+		fmt.Printf(msg.GuardExecuting+"\n", realCmd, strings.Join(args, " "))
 	}
 
-	// Execute using exec.Command
 	c := exec.Command(realCmd, args...)
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
@@ -364,32 +437,114 @@ func findRealCommand(name string) (string, error) {
 			return fullPath, nil
 		}
 	}
-	return "", fmt.Errorf("命令 %s 未找到", name)
+	return "", fmt.Errorf(msg.ErrCmdNotFound, name)
 }
 
-// version and commit are set via -ldflags at build time
+// isTerminal checks whether stdin is a terminal (TTY)
+func isTerminal() bool {
+	stat, _ := os.Stdin.Stat()
+	return (stat.Mode() & os.ModeCharDevice) != 0
+}
+
+// readLineWithTimeout reads a single line from stdin, returning early
+// if no input arrives within the given number of seconds.
+// A seconds <= 0 disables the timeout (waits forever).
+//
+// Why timeout exists: isTerminal() can return true in environments
+// where stdin behaves like a TTY but no human is actually present
+// (some agent sandboxes, pseudo-TTY allocations, terminals where the
+// user wandered off). A timeout fallback prevents the process from
+// hanging forever — we treat the silence as non-interactive and
+// reject the operation with the standard bypass guidance.
+func readLineWithTimeout(seconds int) (string, bool) {
+	ch := make(chan string, 1)
+	go func() {
+		reader := bufio.NewReader(os.Stdin)
+		line, _ := reader.ReadString('\n')
+		ch <- line
+	}()
+	if seconds <= 0 {
+		// Timeout disabled — block until input arrives or the
+		// process is killed (Ctrl+C).
+		return <-ch, false
+	}
+	select {
+	case line := <-ch:
+		return line, false
+	case <-time.After(time.Duration(seconds) * time.Second):
+		// Print a newline so the timeout message appears on its own line,
+		// not on the same line as the prompt.
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintf(os.Stderr, msg.ConfirmTimeoutMsg+"\n", seconds)
+		return "", true
+	}
+}
+
+// nonTTYReason identifies why cmdguard fell into the non-interactive
+// rejection path. It controls only the log message — the user-facing
+// guidance is the same in all cases.
+type nonTTYReason int
+
+const (
+	reasonNonTTY  nonTTYReason = iota // stdin is not a TTY (or unspecified)
+	reasonEnv                         // CMDGUARD_NONINTERACTIVE is set
+	reasonTimeout                     // interactive prompt timed out
+)
+
+// emitNonTTYRejection prints the standard non-interactive rejection
+// block and writes the corresponding log entry.
+func emitNonTTYRejection(cmdName string, args, targets []string, result *guard.Result, reason nonTTYReason) {
+	fmt.Fprintln(os.Stderr, msg.GuardNonTTYRejected)
+	guard.PrintWarning(cmdName, result)
+	fmt.Fprintf(os.Stderr, msg.GuardBypassHelp+"\n",
+		result.Action,
+		cmdName+" "+strings.Join(args, " "))
+
+	var logMsg string
+	switch reason {
+	case reasonEnv:
+		logMsg = msg.GuardEnvNonInteractiveMsg
+	case reasonNonTTY:
+		logMsg = msg.GuardNonTTYMsg
+	}
+	logEntry := log.Entry{
+		Command: cmdName,
+		Action:  msg.LevelReject,
+		Targets: strings.Join(targets, ", "),
+		Rule:    result.Rule,
+		Message: logMsg,
+	}
+	if logger, err := log.New(); err == nil {
+		logger.Append(logEntry)
+	}
+}
+
+// emitNonTTYRejectionTimeout is the timeout-specific variant: it
+// records the actual timeout that elapsed so the audit log captures
+// the operative setting at the time.
+func emitNonTTYRejectionTimeout(cmdName string, args, targets []string, result *guard.Result, seconds int) {
+	fmt.Fprintln(os.Stderr, msg.GuardNonTTYRejected)
+	guard.PrintWarning(cmdName, result)
+	fmt.Fprintf(os.Stderr, msg.GuardBypassHelp+"\n",
+		result.Action,
+		cmdName+" "+strings.Join(args, " "))
+
+	logEntry := log.Entry{
+		Command: cmdName,
+		Action:  msg.LevelReject,
+		Targets: strings.Join(targets, ", "),
+		Rule:    result.Rule,
+		Message: fmt.Sprintf(msg.ConfirmTimeoutLogMsg, seconds),
+	}
+	if logger, err := log.New(); err == nil {
+		logger.Append(logEntry)
+	}
+}
+
+// Version and Commit are set via -ldflags at build time
 var Version = "dev"
 var Commit = "none"
 
 func printGuardHelp(cmdName string) {
-	fmt.Printf(`cmdguard — 命令防护工具
-
-用法:
-  %s [选项] [参数...]
-
-选项:
-  --check       验证 cmdguard 防护是否生效
-  --dry-run     预览匹配结果，不执行（确认规则匹配是否符合预期）
-  --verbose     显示详细执行信息（匹配规则、备份路径、实际命令等）
-  --version     显示版本信息（含底层命令版本）
-  --help        显示帮助信息（含底层命令帮助）
-
-保护级别:
-  reject           🚫  直接拒绝，不执行
-  confirm_double   🔒  警告 + 双层确认（输入 yes）→ 备份 → 执行
-  confirm          ❓  警告 + 单层确认（按 y）→ 备份 → 执行
-  warn             ⚠️  警告 + 备份 → 执行
-
-更多信息: cmdguard help
-`, cmdName)
+	fmt.Print(msg.GuardHelp(cmdName))
 }
