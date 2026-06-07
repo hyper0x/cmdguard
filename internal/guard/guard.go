@@ -7,11 +7,12 @@ import (
 	"strings"
 
 	"github.com/hyper0x/cmdguard/internal/config"
+	"github.com/hyper0x/cmdguard/internal/msg"
 )
 
 // Result represents the outcome of a guard check
 type Result struct {
-	Action  string   // "reject", "confirm", "warn"
+	Action  string   // "reject", "confirm_double", "confirm", "warn", "allow"
 	Rule    string   // the matched rule path
 	Targets []string
 	Message string
@@ -34,14 +35,14 @@ func Check(cfg *config.Config, cmd string, targets []string) *Result {
 					Action:  string(rule.Level),
 					Rule:    rule.Path,
 					Targets: []string{target},
-					Message: fmt.Sprintf("路径匹配保护规则 '%s'", rule.Path),
+					Message: fmt.Sprintf("path matches protection rule '%s'", rule.Path),
 				}
 			}
 		}
 	}
 
 	return &Result{
-		Action:  "allow",
+		Action:  msg.LevelAllow,
 		Targets: targets,
 	}
 }
@@ -170,24 +171,19 @@ func ExtractAllTargets(args []string) []string {
 
 // PrintWarning prints a warning message for protected paths
 func PrintWarning(cmd string, result *Result) {
-	icon := "🚫"
-	level := "拒绝"
+	icon := msg.LevelIcons[msg.LevelReject]
+	level := msg.LevelLabels[msg.LevelReject]
 	switch result.Action {
-	case "confirm_double":
-		icon = "🔒"
-		level = "双重确认"
-	case "confirm":
-		icon = "❓"
-		level = "需要确认"
-	case "warn":
-		icon = "⚠️"
-		level = "警告"
+	case msg.LevelConfirmDbl:
+		icon = msg.LevelIcons[msg.LevelConfirmDbl]
+		level = msg.LevelLabels[msg.LevelConfirmDbl]
+	case msg.LevelConfirm:
+		icon = msg.LevelIcons[msg.LevelConfirm]
+		level = msg.LevelLabels[msg.LevelConfirm]
+	case msg.LevelWarn:
+		icon = msg.LevelIcons[msg.LevelWarn]
+		level = msg.LevelLabels[msg.LevelWarn]
 	}
 
-	fmt.Fprintf(os.Stderr, "\n%s [cmdguard] %s: %s\n", icon, level, result.Message)
-	fmt.Fprintf(os.Stderr, "  命令: %s\n", cmd)
-	for _, t := range result.Targets {
-		fmt.Fprintf(os.Stderr, "  路径: %s\n", t)
-	}
-	fmt.Fprintf(os.Stderr, "  匹配规则: %s\n", result.Rule)
+	fmt.Fprint(os.Stderr, msg.GuardWarningFmt(cmd, icon, level, result.Rule, result.Message, result.Targets))
 }

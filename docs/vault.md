@@ -1,67 +1,88 @@
-# Vault 备份机制
+# Vault & undo
 
-cmdguard 有自己的 vault 备份系统（不依赖系统回收站）。
+cmdguard maintains its own vault — it does NOT rely on the OS trash.
 
-## 工作原理
+## How it works
 
-1. 当 `confirm`、`confirm_double` 或 `warn` 级别的操作被执行时，目标文件先备份到 vault
-2. 备份目录：`~/.cmdguard/vault/<操作ID>/`
-3. 备份包含原始文件的完整副本和元数据
-4. 原始命令执行完毕后，vault 中的备份用于 `undo` 恢复
+1. For `confirm` / `confirm_double` / `warn` operations, target files
+   are copied to the vault **before** the underlying command runs.
+2. Backup directory: `~/.cmdguard/vault/<timestamp>_<id>/`
+3. The backup is a full copy of the original file plus metadata.
+4. After the original command succeeds, the vault copy is the source
+   of truth for `cmdguard undo`.
+5. `reject`ed operations never write to the vault (nothing happened),
+   but they DO get a log entry.
 
-## 为什么不用系统回收站？
+## Why not the OS trash?
 
-- macOS 回收站无法处理 `mv` 覆盖场景
-- 多次删除同名文件时回收站会混淆
-- 回收站没有与操作日志关联的元数据
+- macOS Trash cannot handle `mv` overwrite scenarios
+- Multiple deletions of same-named files get confused in Trash
+- Trash has no metadata linking it to the audit log
+- Cross-platform consistency: same vault mechanism on Linux/macOS/Windows
 
-## 自动清理
+## Auto-purge
 
-- `retention_days`：备份保留天数（默认 30）
-- `auto_purge`：每次执行防护命令时自动清理过期备份（默认开启）
-- 日志永久保留（体积小，有审计价值）
+- `retention_days`: how long backups are kept (default 7)
+- `auto_purge`: purge expired backups on every guarded command
+  (default `true`)
+- Logs are **kept forever** (small files, valuable for audit)
 
-## 撤销恢复
-
-`undo` 命令从 vault 中恢复文件：
+Manual purge:
 
 ```bash
-# 交互式选择
-cmdguard undo
+cmdguard vault clean              # purge expired
+cmdguard vault clean --dry-run    # preview
+```
 
-# 按 ID 精确恢复
-cmdguard list --json
-# 复制目标 ID，然后：
-cmdguard undo --id abc123456789
+## Undo
 
-# 管道模式
+`cmdguard undo` restores files from the vault:
+
+```bash
+# By ID (short prefix is enough)
+cmdguard list                          # find the ID
+cmdguard undo --id abc12345
+
+# Interactive picker
+cmdguard undo --interactive
+
+# Preview
+cmdguard undo --id abc12345 --dry-run
+
+# Pipeline (list → undo)
 cmdguard list --json | cmdguard undo
 ```
 
-### 恢复行为
+### Per-command restore behaviour
 
-| 原始操作 | 恢复行为 |
-|:--------|:--------|
-| `rm file` | 将文件从 vault 复制回原位置 |
-| `mv src dst` | 将目标文件从 vault 恢复（注意：源文件不会自动移回） |
-| `chmod file` | 恢复文件的原始权限 |
+| Original op | Restore behaviour |
+|:------------|:------------------|
+| `rm file`     | Copy the file from vault back to its original path |
+| `mv src dst`  | Restore the destination from vault (the source is NOT moved back automatically) |
+| `chmod file`  | Restore the original permissions |
 
-## 审计日志
+## Audit log
 
-所有操作（包括被拒绝的操作）都会记录到 `~/.cmdguard/log/`。
+Every operation that goes through cmdguard is logged to
+`~/.cmdguard/log/` — including rejected, allowed, bypassed, undo
+itself, and vault-clean events.
 
-- 格式：JSON，按天分文件
-- 保留：永久
-- 内容：操作命令、时间、目标路径、匹配规则、操作结果
+- Format: JSON Lines, one file per day (`YYYY-MM-DD.jsonl`)
+- Retention: **permanent** (independent of vault retention)
+- Fields: id, timestamp, command, action, targets, matched rule,
+  message, bypass identifier
 
 ```json
 {
   "id": "abc123456789",
   "timestamp": "2026-06-06T12:00:00+08:00",
   "command": "rm",
-  "action": "reject",
-  "targets": "/etc/passwd",
-  "rule": "/etc/**",
-  "message": "路径匹配保护规则 '/etc/**'"
+  "action": "confirm",
+  "targets": "/Users/x/Documents/old.txt",
+  "rule": "/Users/x/Documents/**",
+  "message": "path matches protection rule '/Users/x/Documents/**'",
+  "bypass": "mac-studio/qwenpaw/ai_research/cleanup-cache"
 }
 ```
+
+The `bypass` field attributes the operation to a specific agent and task.

@@ -32,7 +32,7 @@ type Vault struct {
 func New(cfg *config.VaultConfig) (*Vault, error) {
 	dir := filepath.Join(config.ConfigDir(), "vault")
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, fmt.Errorf("创建 vault 目录失败: %w", err)
+		return nil, fmt.Errorf("failed to create vault directory: %w", err)
 	}
 	return &Vault{dir: dir, cfg: cfg}, nil
 }
@@ -46,22 +46,22 @@ func (v *Vault) BackupDir(id string) string {
 // SaveFile copies a file into the vault
 func (v *Vault) SaveFile(backupDir, srcPath string) (string, error) {
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
-		return "", fmt.Errorf("创建备份目录失败: %w", err)
+		return "", fmt.Errorf("failed to create backup directory: %w", err)
 	}
 
 	destName := filepath.Base(srcPath)
 	destPath := filepath.Join(backupDir, "files", destName)
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-		return "", fmt.Errorf("创建 files 目录失败: %w", err)
+		return "", fmt.Errorf("failed to create files directory: %w", err)
 	}
 
 	data, err := os.ReadFile(srcPath)
 	if err != nil {
-		return "", fmt.Errorf("读取源文件失败: %w", err)
+		return "", fmt.Errorf("failed to read source file: %w", err)
 	}
 
 	if err := os.WriteFile(destPath, data, 0644); err != nil {
-		return "", fmt.Errorf("写入备份文件失败: %w", err)
+		return "", fmt.Errorf("failed to write backup file: %w", err)
 	}
 
 	return destPath, nil
@@ -74,11 +74,11 @@ func (v *Vault) RestoreFile(backupDir, destPath string) error {
 
 	data, err := os.ReadFile(srcPath)
 	if err != nil {
-		return fmt.Errorf("读取备份文件失败: %w", err)
+		return fmt.Errorf("failed to read backup file: %w", err)
 	}
 
 	if err := os.WriteFile(destPath, data, 0644); err != nil {
-		return fmt.Errorf("恢复文件失败: %w", err)
+		return fmt.Errorf("failed to restore file: %w", err)
 	}
 
 	return nil
@@ -99,7 +99,7 @@ func (v *Vault) PurgeExpired() ([]string, error) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("读取 vault 目录失败: %w", err)
+		return nil, fmt.Errorf("failed to read vault directory: %w", err)
 	}
 
 	for _, entry := range entries {
@@ -121,7 +121,7 @@ func (v *Vault) PurgeExpired() ([]string, error) {
 		if t.Before(cutoff) {
 			backupPath := filepath.Join(v.dir, entry.Name())
 			if err := os.RemoveAll(backupPath); err != nil {
-				fmt.Fprintf(os.Stderr, "[cmdguard] 警告: 删除过期备份 %s 失败: %v\n", entry.Name(), err)
+				fmt.Fprintf(os.Stderr, "[cmdguard] warning: failed to delete expired backup %s: %v\n", entry.Name(), err)
 				continue
 			}
 			purged = append(purged, parts[2]) // the ID
@@ -145,7 +145,7 @@ func (v *Vault) ListExpired() ([]string, error) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("读取 vault 目录失败: %w", err)
+		return nil, fmt.Errorf("failed to read vault directory: %w", err)
 	}
 
 	for _, entry := range entries {

@@ -1,136 +1,188 @@
-# 命令参考
+# Command reference
 
 ## `cmdguard rm/mv/chmod <args...>`
 
-以防护模式运行命令。通过 alias 或 PATH 劫持自动调用，也可手动使用。
+Run a command through cmdguard. Invoked automatically via alias or PATH
+hijack; can also be called directly.
 
 ```bash
-# 直接使用
+# Direct
 cmdguard rm -rf ~/Downloads/temp
 
-# 通过 alias
+# Via alias
 alias rm='cmdguard rm'
 rm -rf ~/Downloads/temp
 ```
 
-### 特殊选项
+### Special flags
 
-| 选项 | 说明 |
+| Flag | Description |
 |:----|:----|
-| `--check` | 验证 cmdguard 防护是否生效（不会执行真实命令） |
-| `--dry-run` | 预览匹配结果，不执行（确认规则匹配是否符合预期后再实际执行） |
-| `--verbose` | 显示详细执行信息（匹配规则、备份路径、实际命令等） |
-| `--version` | 显示 cmdguard 版本信息，同时显示底层命令版本 |
-| `--help` | 显示 cmdguard 帮助（含保护级别说明），同时显示底层命令帮助 |
+| `--check` | Verify the cmdguard wrapper is active (does not execute the real command) |
+| `--dry-run` | Preview the rule-matching result, do not execute |
+| `--verbose` | Print detailed execution info (matched rule, backup path, actual command) |
+| `--version` | Show cmdguard version; also attempt to show the underlying command's version (GNU tools work, BSD silently skipped) |
+| `--help` | Show cmdguard help (with protection levels); also attempt to show the underlying command's help |
+| `--bypass=<id>` | Force execution of a protected path (agent use, see [`--bypass`](#--bypass) below) |
 
-### 示例
+### Examples
 
 ```bash
-# 验证 alias 是否生效
+# Verify the alias is active
 rm --check
-# 输出: [cmdguard] 防护已生效 — rm 正在通过 cmdguard 运行
+# [cmdguard] guard active — rm is running through cmdguard
 
-# 查看版本（同时显示 cmdguard 和底层 rm 版本）
+# Show version
 rm --version
-# cmdguard 0.5.0
-# rm (GNU coreutils) 9.2
-# ...
+# cmdguard 0.6.0
+# rm (GNU coreutils) 9.2 ...
 
-# 预览匹配结果
+# Preview rule matching
 rm --dry-run -rf ~/Downloads/temp
-# [cmdguard] ⚠️ 匹配规则: ~/Downloads/**
-# [cmdguard] --dry-run 模式，未执行任何操作
 
-# 查看详细执行信息
+# Detailed execution info
 rm --verbose -rf ~/Downloads/temp
-# [cmdguard] 匹配规则: ~/Downloads/** (级别: warn)
-# [cmdguard] 备份: /Users/xxx/Downloads/temp
-# [cmdguard] 执行: /bin/rm -rf /Users/xxx/Downloads/temp
 
-# 查看帮助（同时显示 cmdguard 和底层 rm 帮助）
+# Help
 rm --help
 ```
 
 ---
 
+## `--bypass`
+
+**Purpose:** Let an AI agent (or any non-interactive caller) explicitly
+declare: "I have reviewed this operation and confirm it is safe — proceed."
+
+**Format:** `--bypass=<host>/<platform>/<agent>/<task>` — exactly 4
+slash-separated segments:
+
+| Segment  | Meaning                       | Example                |
+|----------|-------------------------------|------------------------|
+| host     | hostname / machine alias      | `mac-studio`           |
+| platform | agent platform                | `qwenpaw`, `cursor`, `claude-code` |
+| agent    | agent id                      | `ai_research`, `coding` |
+| task     | brief task slug               | `cleanup-tmp-dirs`     |
+
+**Validation rules:**
+
+- Exactly 4 segments
+- Each segment matches `[a-zA-Z0-9._-]+`, no empty segments
+- Total length ≥ 12 characters
+- No segment may be a template placeholder (`host`, `platform`, `agent`,
+  `task`, `xxx`, `foo`, `todo`, `changeme`, ...)
+- No angle brackets `<>` or curly braces `{}` (to defeat verbatim
+  template copies)
+
+**Examples:**
+
+```bash
+# ✅ Valid
+rm /tmp/cache --bypass=mac-studio/qwenpaw/ai_research/cleanup-cache
+mv old.txt /Users/x/Documents/new.txt --bypass=laptop/cursor/default/refactor
+
+# ❌ Rejected (template copied verbatim)
+rm /tmp/cache --bypass='<host>/<platform>/<agent>/<task>'
+rm /tmp/cache --bypass=host/platform/agent/task
+
+# ❌ Rejected (placeholder words / wrong format)
+rm /tmp/cache --bypass=xxx/yyy/zzz/foo
+rm /tmp/cache --bypass=abc/def        # too few segments
+```
+
+**Relation to `CMDGUARD_NONINTERACTIVE`:**
+
+| env only | bypass only | both set |
+|:--------:|:-----------:|:--------:|
+| Immediate rejection (no wait) | Normal interactive confirm; non-interactive callers still need env to avoid hanging | Immediate execution, zero wait |
+
+**Key distinction:** the env var only skips the wait — `--bypass` is the
+**actual permission slip**.
+
+**Audit:** every bypass is recorded. `cmdguard list` shows
+`[bypass:mac-studio/qwenpaw/ai_research/cleanup-cache]` so the audit
+trail attributes the operation back to a specific agent/task.
+
+---
+
 ## `cmdguard init [--force] [--dry-run]`
 
-初始化环境。幂等安全，可重复执行。
+Initialize the environment. Idempotent and safe to re-run.
 
-| 选项 | 说明 |
+| Flag | Description |
 |:----|:----|
-| `--force`, `-f` | 强制覆盖已有配置文件和包装脚本（旧文件打包到 `~/.cmdguard/backup/init-<时间戳>.zip`） |
-| `--dry-run` | 预览操作，不实际执行 |
+| `--force` | Overwrite existing config and wrapper scripts (old files zipped to `~/.cmdguard/backup/init-<timestamp>.zip`) |
+| `--dry-run` | Preview the operations, do not execute |
 
 ```bash
-cmdguard init                    # 首次初始化
-cmdguard init --force            # 强制覆盖
-cmdguard init --dry-run          # 预览
-cmdguard init --force --dry-run  # 预览强制覆盖
+cmdguard init                    # first-time init
+cmdguard init --force            # force overwrite
+cmdguard init --dry-run          # preview
+cmdguard init --force --dry-run  # preview with force
 ```
 
 ---
 
-## `cmdguard list [选项]`
+## `cmdguard list [options]`
 
-列出操作日志。
+List audit log entries.
 
-| 选项 | 说明 |
+| Flag | Description |
 |:----|:----|
-| `--recent N` | 最近 N 条（默认 20） |
-| `--since D` | 从多久前开始（如 `"2h"`、`"7d"`） |
-| `--cmd C` | 按命令过滤（`rm`/`mv`/`chmod`） |
-| `--path P` | 按路径关键词过滤 |
-| `--json` | JSON 格式输出（支持管道） |
+| `--recent N` | Last N entries (default 20) |
+| `--since D` | Since duration (e.g. `"2h"`, `"7d"`) |
+| `--cmd C` | Filter by command (`rm`/`mv`/`chmod`) |
+| `--path P` | Filter by path keyword |
+| `--json` | JSON output (pipeline-friendly) |
 
 ```bash
-cmdguard list                    # 最近 20 条
-cmdguard list --recent 50        # 最近 50 条
-cmdguard list --since 7d         # 最近 7 天
-cmdguard list --cmd rm           # 只显示 rm 操作
-cmdguard list --path Documents   # 按路径关键词过滤
-cmdguard list --json             # JSON 格式输出
+cmdguard list                    # last 20
+cmdguard list --recent 50        # last 50
+cmdguard list --since 7d         # last 7 days
+cmdguard list --cmd rm           # only rm
+cmdguard list --path Documents   # by path keyword
+cmdguard list --json             # JSON
 ```
 
 ---
 
-## `cmdguard undo [选项]`
+## `cmdguard undo [options]`
 
-恢复操作。
+Restore an operation.
 
-| 选项 | 说明 |
+| Flag | Description |
 |:----|:----|
-| `--id ID` | 按 ID 精确恢复 |
-| `--interactive` | 交互式选择（默认） |
-| `--dry-run` | 预览要恢复的文件，不实际恢复 |
+| `--id ID` | Restore by ID (short prefix supported) |
+| `--interactive` | Interactive picker |
+| `--dry-run` | Preview the files to restore, do not actually restore |
 
 ```bash
-cmdguard undo                    # 交互式选择
-cmdguard undo --id abc123        # 按 ID 精确恢复
-cmdguard undo --dry-run          # 预览恢复
-cmdguard list --json | cmdguard undo   # 管道模式
+cmdguard undo --id abc123              # by ID
+cmdguard undo --interactive            # picker
+cmdguard undo --id abc123 --dry-run    # preview
+cmdguard list --json | cmdguard undo   # pipeline
 ```
 
 ---
 
 ## `cmdguard vault clean [--dry-run]`
 
-清理过期 vault 备份。
+Purge expired vault backups.
 
-| 选项 | 说明 |
+| Flag | Description |
 |:----|:----|
-| `--dry-run` | 预览要清理的备份，不实际删除 |
+| `--dry-run` | List what would be deleted, do not actually delete |
 
 ```bash
-cmdguard vault clean              # 清理过期备份
-cmdguard vault clean --dry-run    # 预览
+cmdguard vault clean              # purge
+cmdguard vault clean --dry-run    # preview
 ```
 
 ---
 
 ## `cmdguard config`
 
-查看当前配置。
+Print the active configuration (`[protect]`, `[vault]`, `[guard]` sections).
 
 ```bash
 cmdguard config
@@ -138,12 +190,6 @@ cmdguard config
 
 ---
 
-## `cmdguard help`
+## `cmdguard help` / `cmdguard version`
 
-显示帮助信息。
-
----
-
-## `cmdguard version`
-
-显示版本信息。
+Self-explanatory.

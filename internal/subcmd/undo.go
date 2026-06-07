@@ -2,34 +2,28 @@ package subcmd
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
-	"github.com/hyper0x/cmdguard/internal/config"
 	"github.com/hyper0x/cmdguard/internal/log"
+	"github.com/hyper0x/cmdguard/internal/msg"
 	"github.com/hyper0x/cmdguard/internal/vault"
 )
 
 // RunUndo handles the "undo" command
 func RunUndo(args []string) {
-	logger, err := log.New()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[cmdguard] 错误: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Check if we have piped input or --id
-	id := ""
-	interactive := true
 	dryRun := false
+	interactive := false
+	var id string
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--id":
 			if i+1 < len(args) {
 				id = args[i+1]
-				interactive = false
 				i++
 			}
 		case "--interactive":
@@ -39,33 +33,36 @@ func RunUndo(args []string) {
 		}
 	}
 
-	// Check piped input (from cmdguard list)
-	if id == "" && interactive {
+	// If no --id provided, try to read from pipe
+	if id == "" {
 		stat, _ := os.Stdin.Stat()
 		if (stat.Mode() & os.ModeCharDevice) == 0 {
-			// Piped input — supports both table output and JSON
 			scanner := bufio.NewScanner(os.Stdin)
 			for scanner.Scan() {
 				line := strings.TrimSpace(scanner.Text())
-				if line == "" || strings.HasPrefix(line, "-") {
+				if line == "" {
 					continue
 				}
-				// Try JSON pipe: [{"id":"...",...},...]
-				if strings.HasPrefix(line, "[") {
-					// Extract first id from JSON array
-					idx := strings.Index(line, `"id":"`)
-					if idx >= 0 {
-						start := idx + 6
-						end := strings.Index(line[start:], `"`)
-						if end >= 0 {
-							id = line[start : start+end]
+				if strings.HasPrefix(line, "ID") || strings.HasPrefix(line, "--------") {
+					continue
+				}
+				if strings.HasPrefix(line, `[{"id":`) || strings.HasPrefix(line, `{"id":`) {
+					// Try as a single object or first object in an array
+					trimmed := strings.TrimPrefix(line, "[")
+					end := strings.Index(trimmed, "}")
+					if end > 0 {
+						obj := trimmed[:end+1]
+						var entry struct {
+							ID string `json:"id"`
+						}
+						if err := json.Unmarshal([]byte(obj), &entry); err == nil && entry.ID != "" {
+							id = entry.ID
 							break
 						}
 					}
 				}
-				// Table pipe: parse ID from first column
 				fields := strings.Fields(line)
-				if len(fields) > 0 && fields[0] != "ID" {
+				if len(fields) > 0 {
 					id = fields[0]
 					break
 				}
@@ -73,126 +70,149 @@ func RunUndo(args []string) {
 		}
 	}
 
-	if id != "" {
-		// Direct undo by ID
-		undoByID(logger, id, dryRun)
-		return
+	if id == "" && !interactive {
+		fmt.Println(msg.UndoUsage)
+		fmt.Println(msg.UndoUsagePipe)
+		fmt.Println(msg.UndoUsageInteractive)
+		os.Exit(1)
 	}
 
-	if interactive {
-		// Interactive mode: list recent operations and let user choose
+	logger, err := log.New()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrLogLoad)+"\n", err)
+		os.Exit(1)
+	}
+
+	// Interactive mode: list recent operations and let user choose
+	if id == "" && interactive {
 		entries := logger.Search(log.Query{Recent: 20})
 		if len(entries) == 0 {
-			fmt.Println("[cmdguard] 没有可恢复的操作记录")
+			fmt.Println(msg.UndoNoRecords)
 			return
 		}
 
-		fmt.Println("[cmdguard] 选择要恢复的操作:")
-		for i, e := range entries {
-			if e.Expired {
+		fmt.Println(msg.UndoSelectPrompt)
+		displayIdx := 0
+		var displayed []log.Entry
+		for _, e := range entries {
+			if e.Action == msg.LevelReject || e.Action == msg.LevelUndo {
 				continue
 			}
-			fmt.Printf("  %d. %s  %s  %s\n", i+1, e.Timestamp[:19], e.Command, e.Targets)
+			displayIdx++
+			displayed = append(displayed, e)
+			ts := e.Timestamp
+			if len(ts) > 19 {
+				ts = ts[:19]
+			}
+			fmt.Printf(msg.UndoSelectItem+"\n", displayIdx, ts, e.Command, e.Targets)
 		}
-		fmt.Print("输入编号 (0 取消): ")
 
+		if len(displayed) == 0 {
+			fmt.Println(msg.UndoNoRecords)
+			return
+		}
+
+		fmt.Fprint(os.Stderr, msg.UndoSelectInput)
 		reader := bufio.NewReader(os.Stdin)
-		answer, _ := reader.ReadString('\n')
-		answer = strings.TrimSpace(answer)
-
-		var idx int
-		_, err := fmt.Sscanf(answer, "%d", &idx)
-		if err != nil || idx <= 0 || idx > len(entries) {
-			fmt.Println("[cmdguard] 已取消")
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+		if input == "0" || input == "" {
+			fmt.Println(msg.UndoCancelled)
 			return
 		}
 
-		selected := entries[idx-1]
-		if selected.Expired {
-			fmt.Fprintf(os.Stderr, "[cmdguard] 该操作的 vault 备份已过期，无法恢复\n")
-			return
+		for i, e := range displayed {
+			if fmt.Sprintf("%d", i+1) == input {
+				id = e.ID
+				break
+			}
 		}
 
-		undoByID(logger, selected.ID, dryRun)
-		return
+		if id == "" {
+			fmt.Println(msg.UndoCancelled)
+			return
+		}
 	}
 
-	fmt.Fprintln(os.Stderr, "[cmdguard] 用法: cmdguard undo --id <ID>")
-	fmt.Fprintln(os.Stderr, "        cmdguard list | cmdguard undo")
-	fmt.Fprintln(os.Stderr, "        cmdguard undo (交互式)")
-	os.Exit(1)
-}
-
-// undoByID restores a single operation by its log ID
-func undoByID(logger *log.Log, id string, dryRun bool) {
+	// Find the log entry
 	entry := logger.FindByID(id)
 	if entry == nil {
-		fmt.Fprintf(os.Stderr, "[cmdguard] 未找到 ID 为 '%s' 的操作记录\n", id)
+		fmt.Printf(msg.UndoIDNotFound+"\n", id)
 		os.Exit(1)
 	}
 
 	if entry.Expired {
-		fmt.Fprintf(os.Stderr, "[cmdguard] 该操作的 vault 备份已过期，无法恢复\n")
+		fmt.Println(msg.UndoExpired)
 		os.Exit(1)
 	}
 
-	if entry.Action == "reject" {
-		fmt.Fprintf(os.Stderr, "[cmdguard] 该操作已被拒绝，没有可恢复的内容\n")
+	if entry.Action == msg.LevelReject {
+		fmt.Println(msg.UndoRejected)
 		os.Exit(1)
 	}
 
-	// Initialize vault
-	cfg, err := config.Load()
+	// Find vault backup
+	v, err := vault.New(nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[cmdguard] 错误: %v\n", err)
-		os.Exit(1)
-	}
-	v, err := vault.New(&cfg.Vault)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[cmdguard] 错误: %v\n", err)
+		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrVaultNew)+"\n", err)
 		os.Exit(1)
 	}
 
-	backupDir := v.FindBackupDir(id)
+	backupDir := v.FindBackupDir(entry.ID)
 	if backupDir == "" {
-		fmt.Fprintf(os.Stderr, "[cmdguard] 未找到 ID 为 '%s' 的 vault 备份\n", id)
+		fmt.Printf(msg.UndoBackupNotFound+"\n", entry.ID)
 		os.Exit(1)
 	}
 
-	// Check if dry-run
+	// List backed-up files
+	filesDir := filepath.Join(backupDir, "files")
+	files, err := os.ReadDir(filesDir)
+	if err != nil {
+		fmt.Printf(msg.UndoBackupNotFound+"\n", entry.ID)
+		os.Exit(1)
+	}
+
+	// Determine target paths from entry.Targets (comma-separated)
+	targets := strings.Split(entry.Targets, ", ")
+
 	if dryRun {
-		fmt.Printf("[cmdguard] 将恢复以下文件:\n")
-		targets := strings.Split(entry.Targets, ", ")
+		fmt.Println(msg.UndoDryRunHeader)
 		for _, t := range targets {
 			fmt.Printf("  - %s\n", t)
 		}
 		return
 	}
 
-	// Restore files
-	targets := strings.Split(entry.Targets, ", ")
+	// Restore: for each backed-up filename, find a matching target by basename
 	restored := 0
-	for _, t := range targets {
-		if err := v.RestoreFile(backupDir, t); err != nil {
-			fmt.Fprintf(os.Stderr, "[cmdguard] 警告: 恢复 %s 失败: %v\n", t, err)
-			continue
+	for _, f := range files {
+		name := f.Name()
+		for _, t := range targets {
+			if filepath.Base(t) == name {
+				if err := v.RestoreFile(backupDir, t); err != nil {
+					fmt.Printf(msg.UndoRestoreFailed+"\n", t, err)
+				} else {
+					restored++
+				}
+				break
+			}
 		}
-		restored++
 	}
 
 	if restored > 0 {
-		fmt.Printf("[cmdguard] 已恢复 %d 个文件\n", restored)
-
-		// Log the undo operation
-		undoEntry := log.Entry{
-			Command: "undo",
-			Action:  "undo",
-			Targets: entry.Targets,
-			Message: fmt.Sprintf("恢复操作 %s (%s %s)", entry.ID, entry.Command, entry.Targets),
-		}
-		logger.Append(undoEntry)
+		fmt.Printf(msg.UndoRestored+"\n", restored)
 	} else {
-		fmt.Fprintln(os.Stderr, "[cmdguard] 没有文件被恢复")
-		os.Exit(1)
+		fmt.Println(msg.UndoNoFilesRestored)
+	}
+
+	// Log the undo operation
+	logEntry := log.Entry{
+		Command: entry.Command,
+		Action:  msg.LevelUndo,
+		Targets: entry.Targets,
+		Message: fmt.Sprintf("undo of %s", entry.ID),
+	}
+	if logger, err := log.New(); err == nil {
+		logger.Append(logEntry)
 	}
 }
