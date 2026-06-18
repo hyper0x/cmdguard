@@ -445,36 +445,60 @@ func execOriginal(cmdName string, args []string, verbose bool) {
 	}
 }
 
-// findRealCommand finds the real command, skipping cmdguard itself and its wrapper scripts
+// findRealCommand finds the real command, skipping cmdguard itself and
+// its wrapper scripts. The lookup walks PATH in declaration order and
+// returns the first match that is:
+//
+//   - a regular, executable file
+//   - not the running cmdguard binary (so we don't recurse)
+//   - not located inside cmdguard's own bin/ wrapper directory
+//
+// We use filepath.SplitList instead of strings.Split(":") because
+// SplitList honours the OS path separator (Unix=':', Windows=';') and
+// — crucially — preserves empty entries as ".", matching the shell's
+// own PATH semantics. A subtle correctness fix more than a portability
+// one: cmdguard targets Unix, but inheriting a PATH like ":/usr/bin"
+// would otherwise silently skip the implicit CWD.
+//
+// We also skip our own wrapper dir BEFORE the os.SameFile dance: that
+// prefix check is a cheap string compare, while SameFile costs two
+// stat calls. Same correctness, less I/O when invoked in tight loops.
 func findRealCommand(name string) (string, error) {
 	pathEnv := os.Getenv("PATH")
-	dirs := strings.Split(pathEnv, ":")
+	dirs := filepath.SplitList(pathEnv)
 
 	self, _ := os.Executable()
+	var selfInfo os.FileInfo
+	if self != "" {
+		selfInfo, _ = os.Stat(self)
+	}
 	cfgDir := config.ConfigDir()
 	binDir := filepath.Join(cfgDir, "bin")
+	binPrefix := binDir + string(filepath.Separator)
 
 	for _, dir := range dirs {
 		fullPath := filepath.Join(dir, name)
+
+		// Cheap: skip our own wrapper directory without stat'ing.
+		if strings.HasPrefix(fullPath, binPrefix) {
+			continue
+		}
+
 		info, err := os.Stat(fullPath)
 		if err != nil {
 			continue
 		}
-		if info.Mode().IsRegular() && (info.Mode().Perm()&0111) != 0 {
-			// Skip if it's the same as the running binary
-			if self != "" {
-				selfInfo, _ := os.Stat(self)
-				targetInfo, _ := os.Stat(fullPath)
-				if selfInfo != nil && targetInfo != nil && os.SameFile(selfInfo, targetInfo) {
-					continue
-				}
-			}
-			// Skip wrapper scripts in cmdguard bin directory
-			if strings.HasPrefix(fullPath, binDir+string(filepath.Separator)) {
-				continue
-			}
-			return fullPath, nil
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
+			continue
 		}
+
+		// Skip if this match is the running cmdguard binary itself —
+		// otherwise an unguarded `rm` invocation could recurse forever.
+		if selfInfo != nil && os.SameFile(selfInfo, info) {
+			continue
+		}
+
+		return fullPath, nil
 	}
 	return "", fmt.Errorf(msg.ErrCmdNotFound, name)
 }
