@@ -50,7 +50,11 @@ Commands:
   undo [options]     Restore an operation
                        --dry-run preview files to restore, don't actually restore
   vault clean        Clean expired vault backups
-  config             View current configuration
+  vault list         List all vault backups
+  config             View effective configuration
+                       --default  show built-in defaults
+                       --raw      show raw config.toml content
+  path               Show cmdguard directory structure
   help, --help       Show this help
   version, --version Show version info
 
@@ -66,7 +70,8 @@ undo options:
   --interactive Interactive selection (default)
 
 vault options:
-  --dry-run     List expired backups without deleting
+  --dry-run     List expired backups without deleting (used with "clean")
+  --json        Output as JSON (used with "list")
 
 Protection levels:
   reject           ` + LevelIcons[LevelReject] + `   ` + LevelActions[LevelReject] + `
