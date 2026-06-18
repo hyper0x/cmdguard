@@ -3,7 +3,6 @@ package subcmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -16,8 +15,7 @@ import (
 func RunList(args []string) {
 	logger, err := log.New()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrLogLoad)+"\n", err)
-		os.Exit(1)
+		errExit(msg.ErrLogLoad, err)
 	}
 
 	q := log.Query{
@@ -43,8 +41,7 @@ func RunList(args []string) {
 					// log query treats as "no time filter" — so the user
 					// got the full unfiltered log without any indication
 					// that their flag was ignored.
-					fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrListSinceInvalid)+"\n", args[i+1])
-					os.Exit(1)
+					errExit(msg.ErrListSinceInvalid, args[i+1])
 				}
 				q.Since = d
 				i++
@@ -86,8 +83,7 @@ func RunList(args []string) {
 		//  - escapes targets/messages correctly
 		data, err := json.Marshal(entries)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, msg.FmtErr("failed to encode log entries: %v")+"\n", err)
-			os.Exit(1)
+			errExit("failed to encode log entries: %v", err)
 		}
 		fmt.Println(string(data))
 	} else {

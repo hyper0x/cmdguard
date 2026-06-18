@@ -30,8 +30,7 @@ func RunConfig(args []string) {
 			if os.IsNotExist(err) {
 				fmt.Printf(msg.ConfigRawNotExist+"\n", cfgPath)
 			} else {
-				fmt.Fprintf(os.Stderr, msg.FmtErr("failed to read config file: %v")+"\n", err)
-				os.Exit(1)
+				errExit("failed to read config file: %v", err)
 			}
 			return
 		}
@@ -51,8 +50,7 @@ func RunConfig(args []string) {
 	// Default: show effective (merged) config
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrConfigLoad)+"\n", err)
-		os.Exit(1)
+		errExit(msg.ErrConfigLoad, err)
 	}
 
 	fmt.Println(msg.ConfigEffectiveHeader)

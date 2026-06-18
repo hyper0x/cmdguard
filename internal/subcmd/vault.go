@@ -3,7 +3,6 @@ package subcmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -16,14 +15,12 @@ import (
 func RunVault(args []string) {
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrConfigLoad)+"\n", err)
-		os.Exit(1)
+		errExit(msg.ErrConfigLoad, err)
 	}
 
 	v, err := vault.New(&cfg.Vault)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrVaultNew)+"\n", err)
-		os.Exit(1)
+		errExit(msg.ErrVaultNew, err)
 	}
 
 	// Dispatch on subcommand. Each branch parses its own flags so flag
@@ -42,8 +39,7 @@ func RunVault(args []string) {
 	case "list":
 		runVaultList(v, subArgs)
 	default:
-		fmt.Fprintf(os.Stderr, msg.FmtErr("unknown vault subcommand: %s")+"\n", sub)
-		os.Exit(1)
+		errExit("unknown vault subcommand: %s", sub)
 	}
 }
 
@@ -59,8 +55,7 @@ func runVaultClean(v *vault.Vault, args []string) {
 	if dryRun {
 		expired, err := v.ListExpired()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrListExpired)+"\n", err)
-			os.Exit(1)
+			errExit(msg.ErrListExpired, err)
 		}
 		if len(expired) == 0 {
 			fmt.Println(msg.VaultNoExpired)
@@ -75,8 +70,7 @@ func runVaultClean(v *vault.Vault, args []string) {
 
 	purged, err := v.PurgeExpired()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrPurgeExpired)+"\n", err)
-		os.Exit(1)
+		errExit(msg.ErrPurgeExpired, err)
 	}
 	if len(purged) == 0 {
 		fmt.Println(msg.VaultNoExpired)
@@ -96,8 +90,7 @@ func runVaultList(v *vault.Vault, args []string) {
 
 	backups, err := v.ListAll()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, msg.FmtErr("failed to list vault backups: %v")+"\n", err)
-		os.Exit(1)
+		errExit("failed to list vault backups: %v", err)
 	}
 
 	if len(backups) == 0 {
@@ -123,8 +116,7 @@ func runVaultList(v *vault.Vault, args []string) {
 		}
 		data, err := json.Marshal(entries)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, msg.FmtErr("failed to encode vault list: %v")+"\n", err)
-			os.Exit(1)
+			errExit("failed to encode vault list: %v", err)
 		}
 		fmt.Println(string(data))
 		return

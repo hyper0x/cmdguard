@@ -159,8 +159,7 @@ func RunInit(args []string) {
 			fmt.Printf(msg.InitDirExists+"\n", d)
 		} else {
 			if err := os.MkdirAll(d, 0755); err != nil {
-				fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrMkdir)+"\n", d, err)
-				os.Exit(1)
+				errExit(msg.ErrMkdir, d, err)
 			}
 			fmt.Printf(msg.InitDirCreated+"\n", d)
 		}
@@ -188,8 +187,7 @@ func RunInit(args []string) {
 	if len(toBackup) > 0 {
 		zipPath, err := backupFiles(toBackup)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, msg.FmtErr("backup failed: %v")+"\n", err)
-			os.Exit(1)
+			errExit("backup failed: %v", err)
 		}
 		fmt.Printf(msg.InitBackupCreated+"\n", zipPath)
 	}
@@ -319,8 +317,7 @@ confirm_timeout = 5          # seconds; 'confirm' prompt
 confirm_double_timeout = 10  # seconds per step; 'confirm_double' prompt
 `
 		if err := os.WriteFile(cfgPath, []byte(defaultCfg), 0644); err != nil {
-			fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrWriteFile)+"\n", cfgPath, err)
-			os.Exit(1)
+			errExit(msg.ErrWriteFile, cfgPath, err)
 		}
 		if force {
 			fmt.Printf(msg.InitConfigOverwritten+"\n", cfgPath)
@@ -334,8 +331,7 @@ confirm_double_timeout = 10  # seconds per step; 'confirm_double' prompt
 	// 5. Create wrapper scripts in ~/.cmdguard/bin/
 	selfPath, err := os.Executable()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, msg.FmtErr("failed to get executable path: %v")+"\n", err)
-		os.Exit(1)
+		errExit("failed to get executable path: %v", err)
 	}
 
 	for _, cmd := range GuardedCommands() {
@@ -352,8 +348,7 @@ confirm_double_timeout = 10  # seconds per step; 'confirm_double' prompt
 exec %s %s "$@"
 `, selfPath, cmd)
 			if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
-				fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrWriteFile)+"\n", scriptPath, err)
-				os.Exit(1)
+				errExit(msg.ErrWriteFile, scriptPath, err)
 			}
 			if force {
 				fmt.Printf(msg.InitScriptOverwritten+"\n", scriptPath)

@@ -79,8 +79,7 @@ func RunUndo(args []string) {
 
 	logger, err := log.New()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrLogLoad)+"\n", err)
-		os.Exit(1)
+		errExit(msg.ErrLogLoad, err)
 	}
 
 	// Interactive mode: list recent operations and let user choose
@@ -154,8 +153,7 @@ func RunUndo(args []string) {
 	// Find vault backup
 	v, err := vault.New(nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrVaultNew)+"\n", err)
-		os.Exit(1)
+		errExit(msg.ErrVaultNew, err)
 	}
 
 	backupDir := v.FindBackupDir(entry.ID)

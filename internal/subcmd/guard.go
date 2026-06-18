@@ -147,8 +147,7 @@ func RunGuard(cmdName string, args []string) {
 
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrConfigLoad)+"\n", err)
-		os.Exit(1)
+		errExit(msg.ErrConfigLoad, err)
 	}
 
 	// Auto-purge expired vault backups if enabled. Best-effort:
@@ -353,7 +352,7 @@ func RunGuard(cmdName string, args []string) {
 		}
 		v, err := vault.New(&cfg.Vault)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrVaultNew)+"\n", err)
+			errPrint(msg.ErrVaultNew, err)
 			execOriginal(cmdName, args, verbose)
 			return
 		}
@@ -412,7 +411,7 @@ func RunGuard(cmdName string, args []string) {
 					fmt.Printf(msg.VerboseBackupFile+"\n", dest)
 				}
 				if _, err := v.SaveFile(backupDir, dest); err != nil {
-					fmt.Fprintf(os.Stderr, msg.FmtWarn(msg.ErrVaultBackup)+"\n", dest, err)
+					warn(msg.ErrVaultBackup, dest, err)
 				}
 			default:
 				// Case 2: directory destination.
@@ -430,7 +429,7 @@ func RunGuard(cmdName string, args []string) {
 							fmt.Printf(msg.VerboseBackupFile+"\n", victim)
 						}
 						if _, err := v.SaveFile(backupDir, victim); err != nil {
-							fmt.Fprintf(os.Stderr, msg.FmtWarn(msg.ErrVaultBackup)+"\n", victim, err)
+							warn(msg.ErrVaultBackup, victim, err)
 						}
 					}
 				}
@@ -447,7 +446,7 @@ func RunGuard(cmdName string, args []string) {
 						fmt.Printf(msg.VerboseBackupFile+"\n", t)
 					}
 					if _, err := v.SaveFile(backupDir, t); err != nil {
-						fmt.Fprintf(os.Stderr, msg.FmtWarn(msg.ErrVaultBackup)+"\n", t, err)
+						warn(msg.ErrVaultBackup, t, err)
 					}
 				}
 			}
@@ -468,8 +467,7 @@ func RunGuard(cmdName string, args []string) {
 func execOriginal(cmdName string, args []string, verbose bool) {
 	realCmd, err := findRealCommand(cmdName)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrCmdNotFound)+"\n", cmdName)
-		os.Exit(1)
+		errExit(msg.ErrCmdNotFound, cmdName)
 	}
 
 	if verbose {

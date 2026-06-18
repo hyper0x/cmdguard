@@ -13,7 +13,11 @@ const (
 	ErrLogDir = "failed to create log directory: %w"
 
 	// ErrLogLoad is the warning template when loading log fails.
-	ErrLogLoad = TagCmdguard + " warning: failed to load log: %v"
+	// Pass through msg.FmtWarn / subcmd.warn — the [cmdguard] tag and
+	// "warning:" prefix are added at the call site, NOT embedded here.
+	// Embedding the prefix in the template caused double-tagging once
+	// callers were standardised on the FmtWarn helper.
+	ErrLogLoad = "failed to load log: %v"
 
 	// ErrLogSerialize is the error template when serializing log entry fails.
 	ErrLogSerialize = "failed to serialize log entry: %w"
@@ -37,7 +41,8 @@ const (
 	ErrVaultNew = "failed to create vault: %v"
 
 	// ErrVaultBackup is the warning template when backing up a file fails.
-	ErrVaultBackup = "warning: backup of %s failed: %v"
+	// Same convention as ErrLogLoad: no embedded "warning:" prefix.
+	ErrVaultBackup = "backup of %s failed: %v"
 
 	// ErrListExpired is the error template when listing expired backups fails.
 	ErrListExpired = "failed to list expired backups: %v"

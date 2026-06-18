@@ -49,7 +49,10 @@ func New() (*Log, error) {
 	}
 
 	if err := l.load(); err != nil {
-		fmt.Fprintf(os.Stderr, msg.FmtWarn(msg.ErrLogLoad)+"\n", err)
+		// Single-pass format: msg.FmtWarn does the Sprintf itself.
+		// The previous "FmtWarn(template)+\\n" + Fprintf pattern
+		// double-formatted the string and produced %!v(MISSING) noise.
+		fmt.Fprintln(os.Stderr, msg.FmtWarn(msg.ErrLogLoad, err))
 	}
 
 	return l, nil
