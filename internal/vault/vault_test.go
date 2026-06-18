@@ -370,3 +370,106 @@ func TestSaveRestore_PreservesMode(t *testing.T) {
 		t.Errorf("restored mode = %o, want 0600", got)
 	}
 }
+
+// TestSaveRestore_SameBasenameDifferentDirs verifies the manifest-based
+// layout no longer collapses two same-named files from different
+// directories into one slot. Previously SaveFile keyed on
+// filepath.Base(srcPath), so /etc/foo.conf and /opt/foo.conf would
+// share the same destination and the second backup overwrote the
+// first — a silent data-loss bug on common patterns like
+// `cmdguard rm /etc/x /opt/x`.
+func TestSaveRestore_SameBasenameDifferentDirs(t *testing.T) {
+	v, tmp := setupTestVault(t, nil)
+
+	// Two different directories, same basename.
+	a := filepath.Join(tmp, "a", "foo.conf")
+	b := filepath.Join(tmp, "b", "foo.conf")
+	writeFile(t, a, "content-A")
+	writeFile(t, b, "content-B")
+
+	backupDir := v.BackupDir("collisiontest")
+	if _, err := v.SaveFile(backupDir, a); err != nil {
+		t.Fatalf("SaveFile a: %v", err)
+	}
+	if _, err := v.SaveFile(backupDir, b); err != nil {
+		t.Fatalf("SaveFile b: %v", err)
+	}
+
+	// Wipe both originals.
+	if err := os.Remove(a); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(b); err != nil {
+		t.Fatal(err)
+	}
+
+	// Restore both — manifest must direct each restore to the right place.
+	if err := v.RestoreFile(backupDir, a); err != nil {
+		t.Fatalf("RestoreFile a: %v", err)
+	}
+	if err := v.RestoreFile(backupDir, b); err != nil {
+		t.Fatalf("RestoreFile b: %v", err)
+	}
+
+	// Each path must hold its original distinct content.
+	gotA, _ := os.ReadFile(a)
+	gotB, _ := os.ReadFile(b)
+	if string(gotA) != "content-A" {
+		t.Errorf("a content = %q, want %q", gotA, "content-A")
+	}
+	if string(gotB) != "content-B" {
+		t.Errorf("b content = %q, want %q", gotB, "content-B")
+	}
+}
+
+// TestSaveFile_WritesManifest verifies the manifest is created and
+// records the original absolute path. This is the contract that
+// undo and ListAll rely on.
+func TestSaveFile_WritesManifest(t *testing.T) {
+	v, tmp := setupTestVault(t, nil)
+	src := filepath.Join(tmp, "work", "doc.txt")
+	writeFile(t, src, "hi")
+
+	backupDir := v.BackupDir("manifesttest")
+	if _, err := v.SaveFile(backupDir, src); err != nil {
+		t.Fatalf("SaveFile: %v", err)
+	}
+
+	manifestPath := filepath.Join(backupDir, "manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	absSrc, _ := filepath.Abs(src)
+	if !strings.Contains(string(data), absSrc) {
+		t.Errorf("manifest does not contain %q:\n%s", absSrc, data)
+	}
+}
+
+// TestRestoreFile_LegacyFallback verifies pre-manifest backups still
+// restore via the basename layout. This is the back-compat contract:
+// upgrading cmdguard must not strand existing vault backups.
+func TestRestoreFile_LegacyFallback(t *testing.T) {
+	v, tmp := setupTestVault(t, nil)
+
+	backupDir := v.BackupDir("legacyxxxxxx")
+	// Hand-build a legacy backup: files/foo.txt with no manifest.
+	if err := os.MkdirAll(filepath.Join(backupDir, "files"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backupDir, "files", "foo.txt"), []byte("legacy"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dest := filepath.Join(tmp, "restored", "foo.txt")
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.RestoreFile(backupDir, dest); err != nil {
+		t.Fatalf("RestoreFile (legacy): %v", err)
+	}
+	got, _ := os.ReadFile(dest)
+	if string(got) != "legacy" {
+		t.Errorf("legacy restore content = %q, want %q", got, "legacy")
+	}
+}
