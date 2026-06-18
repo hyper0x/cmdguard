@@ -36,7 +36,17 @@ func RunList(args []string) {
 			}
 		case "--since":
 			if i+1 < len(args) {
-				q.Since = parseDuration(args[i+1])
+				d, err := parseDuration(args[i+1])
+				if err != nil {
+					// Reject malformed input loudly. Previously a typo like
+					// `--since 7days` silently parsed to zero, which the
+					// log query treats as "no time filter" — so the user
+					// got the full unfiltered log without any indication
+					// that their flag was ignored.
+					fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrListSinceInvalid)+"\n", args[i+1])
+					os.Exit(1)
+				}
+				q.Since = d
 				i++
 			}
 		case "--cmd":
@@ -106,20 +116,33 @@ func RunList(args []string) {
 	}
 }
 
-// parseDuration parses a human-readable duration like "2h", "7d", "30m"
-func parseDuration(s string) time.Duration {
+// parseDuration parses a human-readable duration like "2h", "7d", "30m".
+// Returns an error for empty input or unparseable suffixes so callers
+// can surface a clean error to the user instead of silently treating
+// "7days" as "no filter".
+func parseDuration(s string) (time.Duration, error) {
 	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("empty duration")
+	}
 
 	if strings.HasSuffix(s, "d") {
 		days, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
-		if err == nil {
-			return time.Duration(days) * 24 * time.Hour
+		if err != nil {
+			return 0, fmt.Errorf("invalid days value: %w", err)
 		}
+		if days < 0 {
+			return 0, fmt.Errorf("negative duration: %s", s)
+		}
+		return time.Duration(days) * 24 * time.Hour, nil
 	}
 
 	d, err := time.ParseDuration(s)
 	if err != nil {
-		return 0
+		return 0, err
 	}
-	return d
+	if d < 0 {
+		return 0, fmt.Errorf("negative duration: %s", s)
+	}
+	return d, nil
 }
