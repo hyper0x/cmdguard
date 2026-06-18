@@ -13,13 +13,38 @@ func RunConfig(args []string) {
 	// Parse flags
 	showDefault := false
 	showRaw := false
+	showBinDir := false
 	for _, a := range args {
 		switch a {
 		case "--default":
 			showDefault = true
 		case "--raw":
 			showRaw = true
+		case "--bin-dir":
+			showBinDir = true
 		}
+	}
+
+	// --bin-dir: print the wrapper script directory and exit.
+	//
+	// Designed for shell composition. The integration guide tells
+	// users to run:
+	//
+	//   export PATH="$(cmdguard config --bin-dir):$PATH"
+	//
+	// so the output is intentionally a bare path with no decoration,
+	// no trailing newline beyond what fmt.Println adds, no logging
+	// tag — anything else would corrupt the resulting PATH.
+	//
+	// Mutually exclusive with --default and --raw: those produce
+	// human-oriented multi-line output that's incompatible with
+	// command substitution. We pick --bin-dir over them when more
+	// than one is supplied; documenting "first flag wins" would be
+	// surprising in either direction, but --bin-dir is the
+	// machine-readable mode so it takes precedence.
+	if showBinDir {
+		fmt.Println(config.BinDir())
+		return
 	}
 
 	// --raw: dump raw config.toml content

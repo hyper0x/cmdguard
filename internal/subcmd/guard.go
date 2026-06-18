@@ -521,8 +521,7 @@ func findRealCommand(name string) (string, error) {
 	if self != "" {
 		selfInfo, _ = os.Stat(self)
 	}
-	cfgDir := config.ConfigDir()
-	binDir := filepath.Join(cfgDir, "bin")
+	binDir := config.BinDir()
 	binPrefix := binDir + string(filepath.Separator)
 
 	for _, dir := range dirs {

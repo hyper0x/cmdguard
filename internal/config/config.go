@@ -151,6 +151,17 @@ func ConfigPath() string {
 	return filepath.Join(ConfigDir(), "config.toml")
 }
 
+// BinDir returns the directory holding cmdguard wrapper scripts
+// (rm/mv/chmod). Currently a child of ConfigDir, but exposed as its
+// own function so callers — including the public `cmdguard config
+// --bin-dir` command — don't bake the layout into themselves. If the
+// wrapper location ever moves (e.g. to /usr/local/libexec/cmdguard
+// for a system-wide install), callers using BinDir() pick up the
+// change for free.
+func BinDir() string {
+	return filepath.Join(ConfigDir(), "bin")
+}
+
 // Load loads configuration from the config file.
 //
 // Behaviour:

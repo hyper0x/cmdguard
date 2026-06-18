@@ -54,6 +54,7 @@ Commands:
   config             View effective configuration
                        --default  show built-in defaults
                        --raw      show raw config.toml content
+                       --bin-dir  print the wrapper directory (machine-readable)
   path               Show cmdguard directory structure
   help, --help       Show this help
   version, --version Show version info
