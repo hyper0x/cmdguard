@@ -341,14 +341,53 @@ func RunGuard(cmdName string, args []string) {
 		}
 
 		if cmdName == "mv" {
-			// For mv, backup the destination file (last target) before overwrite
+			// For mv, we need to back up everything that *would be
+			// overwritten*. Two cases:
+			//
+			//   1. Dest is an existing FILE — `mv src dst` overwrites
+			//      dst directly. Back up dst.
+			//
+			//   2. Dest is an existing DIRECTORY — `mv a b dest/` lands
+			//      each source as `dest/<basename(src)>`. For every src
+			//      whose target slot already holds a regular file, that
+			//      file is about to be overwritten. Back it up.
+			//
+			//   The previous implementation only handled case (1), so
+			//   `mv old.conf existing-dir/` could silently overwrite
+			//   `existing-dir/old.conf` with no recovery path. This is
+			//   a data-loss bug; we now cover both paths.
 			dest := targets[len(targets)-1]
-			if info, err := os.Stat(dest); err == nil && !info.IsDir() {
+			info, err := os.Stat(dest)
+			switch {
+			case err != nil:
+				// Dest doesn't exist — `mv` will create it. No backup needed.
+			case !info.IsDir():
+				// Case 1: file destination.
 				if verbose {
 					fmt.Printf(msg.VerboseBackupFile+"\n", dest)
 				}
 				if _, err := v.SaveFile(backupDir, dest); err != nil {
 					fmt.Fprintf(os.Stderr, msg.FmtWarn(msg.ErrVaultBackup)+"\n", dest, err)
+				}
+			default:
+				// Case 2: directory destination.
+				// Sources are everything except the last positional arg.
+				allTargets := guard.ExtractAllTargets(args)
+				if len(allTargets) > 1 {
+					sources := allTargets[:len(allTargets)-1]
+					for _, src := range sources {
+						victim := filepath.Join(dest, filepath.Base(src))
+						vi, err := os.Stat(victim)
+						if err != nil || vi.IsDir() {
+							continue
+						}
+						if verbose {
+							fmt.Printf(msg.VerboseBackupFile+"\n", victim)
+						}
+						if _, err := v.SaveFile(backupDir, victim); err != nil {
+							fmt.Fprintf(os.Stderr, msg.FmtWarn(msg.ErrVaultBackup)+"\n", victim, err)
+						}
+					}
 				}
 			}
 		} else {
