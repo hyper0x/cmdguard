@@ -10,13 +10,57 @@ import (
 
 // RunConfig handles the "config" command
 func RunConfig(args []string) {
+	// Parse flags
+	showDefault := false
+	showRaw := false
+	for _, a := range args {
+		switch a {
+		case "--default":
+			showDefault = true
+		case "--raw":
+			showRaw = true
+		}
+	}
+
+	// --raw: dump raw config.toml content
+	if showRaw {
+		cfgPath := config.ConfigPath()
+		data, err := os.ReadFile(cfgPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				fmt.Printf(msg.ConfigRawNotExist+"\n", cfgPath)
+			} else {
+				fmt.Fprintf(os.Stderr, msg.FmtErr("failed to read config file: %v")+"\n", err)
+				os.Exit(1)
+			}
+			return
+		}
+		fmt.Printf(msg.ConfigRawHeader+"\n", cfgPath)
+		fmt.Println(string(data))
+		return
+	}
+
+	// --default: show built-in defaults
+	if showDefault {
+		cfg := config.DefaultConfig()
+		fmt.Println(msg.ConfigDefaultHeader)
+		printConfig(cfg)
+		return
+	}
+
+	// Default: show effective (merged) config
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, msg.FmtErr(msg.ErrConfigLoad)+"\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println(msg.ConfigHeader)
+	fmt.Println(msg.ConfigEffectiveHeader)
+	printConfig(cfg)
+}
+
+// printConfig renders a Config struct to stdout
+func printConfig(cfg *config.Config) {
 	fmt.Printf(msg.ConfigFile+"\n", config.ConfigPath())
 	fmt.Println()
 
