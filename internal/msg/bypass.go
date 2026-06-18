@@ -20,6 +20,10 @@ var placeholderTokens = []string{
 	"example", "sample", "placeholder",
 	"xxx", "yyy", "zzz", "foo", "bar", "baz",
 	"todo", "tbd", "fixme", "changeme",
+	// Common dummy values that LLM agents tend to substitute when they
+	// can't think of a real identifier. Reject these to keep audit logs
+	// meaningful.
+	"test", "tests", "demo", "dummy", "fake", "temp",
 }
 
 // containsPlaceholder reports whether any segment of id is (after
