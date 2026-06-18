@@ -493,6 +493,7 @@ func execOriginal(cmdName string, args []string, verbose bool) {
 //   - a regular, executable file
 //   - not the running cmdguard binary (so we don't recurse)
 //   - not located inside cmdguard's own bin/ wrapper directory
+//   - not a cmdguard wrapper from *another* install (sentinel check)
 //
 // We use filepath.SplitList instead of strings.Split(":") because
 // SplitList honours the OS path separator (Unix=':', Windows=';') and
@@ -504,6 +505,13 @@ func execOriginal(cmdName string, args []string, verbose bool) {
 // We also skip our own wrapper dir BEFORE the os.SameFile dance: that
 // prefix check is a cheap string compare, while SameFile costs two
 // stat calls. Same correctness, less I/O when invoked in tight loops.
+//
+// The sentinel check defends against a scenario the path-prefix skip
+// misses: when CMDGUARD_CONFIG_DIR is overridden to a sandbox while
+// the user's real ~/.cmdguard/bin/ remains on PATH, or when two
+// cmdguard installs coexist. Without sentinel detection, the wrapper
+// from the *other* install gets exec'd and recursion ensues — observed
+// during the v0.7.0 release sweep.
 func findRealCommand(name string) (string, error) {
 	pathEnv := os.Getenv("PATH")
 	dirs := filepath.SplitList(pathEnv)
@@ -539,9 +547,41 @@ func findRealCommand(name string) (string, error) {
 			continue
 		}
 
+		// Skip cmdguard wrappers from other installs: they all carry
+		// the WrapperSentinelPrefix in their second line. Native
+		// binaries (ELF/Mach-O) don't start with '#!', so the sniff
+		// is essentially free for them — we exit on the first byte.
+		if isCmdguardWrapper(fullPath) {
+			continue
+		}
+
 		return fullPath, nil
 	}
 	return "", fmt.Errorf(msg.ErrCmdNotFound, name)
+}
+
+// isCmdguardWrapper reports whether the file at path is a cmdguard
+// wrapper script. It reads at most 256 bytes — enough to cover the
+// shebang plus the sentinel line written by RunInit — and checks for
+// WrapperSentinelPrefix. Returns false on any I/O error: the caller
+// has already stat'd the file, so a transient read failure is treated
+// as "not a wrapper" rather than aborting the PATH walk.
+func isCmdguardWrapper(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	// 256 bytes covers `#!/bin/bash\n# cmdguard:wrapper:vN\n` with
+	// plenty of slack for future shebang variants.
+	buf := make([]byte, 256)
+	n, _ := f.Read(buf)
+	if n < 2 || buf[0] != '#' || buf[1] != '!' {
+		// Not a shell script — definitely not a cmdguard wrapper.
+		return false
+	}
+	return strings.Contains(string(buf[:n]), WrapperSentinelPrefix)
 }
 
 // isTerminal checks whether stdin is a terminal (TTY)

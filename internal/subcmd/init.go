@@ -344,9 +344,15 @@ confirm_double_timeout = 10  # seconds per step; 'confirm_double' prompt
 		}
 
 		if needWriteScript {
+			// Sentinel line lets findRealCommand recognise this file
+			// as a cmdguard wrapper and skip it during PATH lookup —
+			// crucial when multiple cmdguard installs coexist or when
+			// a sandboxed CMDGUARD_CONFIG_DIR is layered on top of an
+			// existing ~/.cmdguard/bin/. Without it, recursion ensues.
 			script := fmt.Sprintf(`#!/bin/bash
+%s
 exec %s %s "$@"
-`, selfPath, cmd)
+`, WrapperSentinel, selfPath, cmd)
 			if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
 				errExit(msg.ErrWriteFile, scriptPath, err)
 			}
