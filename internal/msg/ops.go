@@ -44,6 +44,11 @@ const (
 
 	// ErrPurgeExpired is the error template when purging expired backups fails.
 	ErrPurgeExpired = "failed to purge expired backups: %v"
+
+	// ErrListSinceInvalid is shown when --since receives an unparseable value.
+	// Examples of malformed input: "7days", "tomorrow", "" (empty).
+	// Examples of accepted input: "30m", "2h", "7d".
+	ErrListSinceInvalid = "invalid --since value %q (use formats like 30m, 2h, 7d)"
 )
 
 // ─── List command output ────────────────────────────────────────────
