@@ -119,6 +119,15 @@ func (l *Log) Append(entry Entry) error {
 		return fmt.Errorf(msg.ErrLogLine, err)
 	}
 
+	// Force the audit log entry to disk. cmdguard's log is the only
+	// trail of which destructive operations were attempted, approved,
+	// or bypassed — we cannot afford to lose the most recent entries
+	// to a system crash. The cost (one fsync per guarded command) is
+	// acceptable given how rarely rm/mv/chmod run compared to other I/O.
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf(msg.ErrLogLine, err)
+	}
+
 	return nil
 }
 
@@ -243,26 +252,4 @@ func (l *Log) rewrite() error {
 		}
 	}
 	return nil
-}
-
-// FormatEntry formats a log entry for display
-func FormatEntry(e Entry) string {
-	expired := ""
-	if e.Expired {
-		expired = " [expired]"
-	}
-	return fmt.Sprintf("%s  %s  %s  %s%s",
-		e.ID[:min(len(e.ID), 8)],
-		e.Timestamp,
-		e.Command,
-		e.Targets,
-		expired,
-	)
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
