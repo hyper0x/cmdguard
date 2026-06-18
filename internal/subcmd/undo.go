@@ -164,37 +164,71 @@ func RunUndo(args []string) {
 		os.Exit(1)
 	}
 
-	// List backed-up files
-	filesDir := filepath.Join(backupDir, "files")
-	files, err := os.ReadDir(filesDir)
-	if err != nil {
-		fmt.Printf(msg.UndoBackupNotFound+"\n", entry.ID)
-		os.Exit(1)
+	// Determine which paths to restore.
+	//
+	// Preferred: read the backup's manifest, which records each saved
+	// file's *original absolute path*. This avoids the basename-based
+	// matching that previously caused two files with the same name
+	// (e.g. /etc/foo.conf vs /opt/foo.conf) to be confused at restore.
+	//
+	// Fallback: legacy backups (created before manifest support) only
+	// have files/<basename>. We list them and try to match by basename
+	// against the entry.Targets list — same limitation as before, but
+	// preserved for backward compatibility.
+	manifestEntries, hasManifest := readBackupManifest(backupDir)
+
+	if !hasManifest {
+		// Legacy fallback: list backed-up files.
+		filesDir := filepath.Join(backupDir, "files")
+		if _, err := os.ReadDir(filesDir); err != nil {
+			fmt.Printf(msg.UndoBackupNotFound+"\n", entry.ID)
+			os.Exit(1)
+		}
 	}
 
-	// Determine target paths from entry.Targets (comma-separated)
-	targets := strings.Split(entry.Targets, ", ")
+	// entry.Targets is "/path/a, /path/b, ..." — split for display only.
+	logTargets := strings.Split(entry.Targets, ", ")
 
 	if dryRun {
 		fmt.Println(msg.UndoDryRunHeader)
-		for _, t := range targets {
-			fmt.Printf("  - %s\n", t)
+		if hasManifest {
+			for _, p := range manifestEntries {
+				fmt.Printf("  - %s\n", p)
+			}
+		} else {
+			for _, t := range logTargets {
+				fmt.Printf("  - %s\n", t)
+			}
 		}
 		return
 	}
 
-	// Restore: for each backed-up filename, find a matching target by basename
+	// Restore.
 	restored := 0
-	for _, f := range files {
-		name := f.Name()
-		for _, t := range targets {
-			if filepath.Base(t) == name {
-				if err := v.RestoreFile(backupDir, t); err != nil {
-					fmt.Printf(msg.UndoRestoreFailed+"\n", t, err)
-				} else {
-					restored++
+	if hasManifest {
+		// Manifest path → absolute original path is exactly where we restore.
+		for _, p := range manifestEntries {
+			if err := v.RestoreFile(backupDir, p); err != nil {
+				fmt.Printf(msg.UndoRestoreFailed+"\n", p, err)
+			} else {
+				restored++
+			}
+		}
+	} else {
+		// Legacy: match by basename against targets in the log entry.
+		filesDir := filepath.Join(backupDir, "files")
+		files, _ := os.ReadDir(filesDir)
+		for _, f := range files {
+			name := f.Name()
+			for _, t := range logTargets {
+				if filepath.Base(t) == name {
+					if err := v.RestoreFile(backupDir, t); err != nil {
+						fmt.Printf(msg.UndoRestoreFailed+"\n", t, err)
+					} else {
+						restored++
+					}
+					break
 				}
-				break
 			}
 		}
 	}
@@ -215,4 +249,30 @@ func RunUndo(args []string) {
 	if logger, err := log.New(); err == nil {
 		logger.Append(logEntry)
 	}
+}
+
+// readBackupManifest tries to read manifest.json under backupDir and
+// returns the list of original absolute paths. The second return value
+// is true only when a non-empty manifest was found, signalling callers
+// to use the manifest-aware restore path. We deliberately keep this
+// loose (any error → "no manifest") so a corrupt manifest falls back
+// gracefully to the legacy basename-matching path.
+func readBackupManifest(backupDir string) ([]string, bool) {
+	data, err := os.ReadFile(filepath.Join(backupDir, "manifest.json"))
+	if err != nil {
+		return nil, false
+	}
+	var m struct {
+		Files []struct {
+			Original string `json:"original"`
+		} `json:"files"`
+	}
+	if err := json.Unmarshal(data, &m); err != nil || len(m.Files) == 0 {
+		return nil, false
+	}
+	out := make([]string, 0, len(m.Files))
+	for _, fe := range m.Files {
+		out = append(out, fe.Original)
+	}
+	return out, true
 }

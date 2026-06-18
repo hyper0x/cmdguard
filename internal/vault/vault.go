@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,6 +21,31 @@ type Backup struct {
 	Source    string // original path
 	Target    string // for mv: destination path
 	Files     []string
+}
+
+// ManifestVersion is bumped when the manifest schema changes in a way
+// that older code cannot read. v1 is the initial release.
+const ManifestVersion = 1
+
+// manifestFileName is the per-backup metadata file. Stored alongside
+// the files/ tree inside each backup directory.
+const manifestFileName = "manifest.json"
+
+// ManifestEntry records one saved file: its original absolute path
+// and where it lives inside the backup's files/ tree (a forward-slash
+// path relative to files/).
+type ManifestEntry struct {
+	OriginalPath string `json:"original"`
+	StoredAs     string `json:"stored"`
+}
+
+// Manifest is the structure persisted as manifest.json in each
+// backup directory. It is the authoritative record of what was
+// backed up; the on-disk layout under files/ is just a content
+// store keyed by manifest entries.
+type Manifest struct {
+	Version int             `json:"version"`
+	Files   []ManifestEntry `json:"files"`
 }
 
 // Vault manages file backups
@@ -44,16 +70,33 @@ func (v *Vault) BackupDir(id string) string {
 }
 
 // SaveFile copies a file into the vault, preserving the source file's
-// permission bits. Preserving mode matters because restoring a file
-// like ~/.ssh/id_rsa with default 0644 would silently weaken its
-// security posture (sshd refuses keys with permissive modes).
+// permission bits, and records the original path in the backup's
+// manifest. The on-disk layout uses the original absolute path
+// (with a leading "/" stripped) so files with the same basename
+// from different directories no longer collide:
+//
+//   /etc/foo.conf  →  files/etc/foo.conf
+//   /opt/foo.conf  →  files/opt/foo.conf
+//
+// Preserving mode matters because restoring a file like ~/.ssh/id_rsa
+// with default 0644 would silently weaken its security posture
+// (sshd refuses keys with permissive modes).
 func (v *Vault) SaveFile(backupDir, srcPath string) (string, error) {
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create backup directory: %w", err)
 	}
 
-	destName := filepath.Base(srcPath)
-	destPath := filepath.Join(backupDir, "files", destName)
+	// Resolve to an absolute, cleaned path so the manifest record is
+	// unambiguous. Falling back to srcPath keeps the call working even
+	// if Abs fails (e.g. on a deleted CWD), at the cost of a less
+	// canonical record.
+	absSrc, err := filepath.Abs(srcPath)
+	if err != nil {
+		absSrc = filepath.Clean(srcPath)
+	}
+
+	stored := storedPathFor(absSrc)
+	destPath := filepath.Join(backupDir, "files", stored)
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return "", fmt.Errorf("failed to create files directory: %w", err)
 	}
@@ -72,15 +115,54 @@ func (v *Vault) SaveFile(backupDir, srcPath string) (string, error) {
 		return "", fmt.Errorf("failed to write backup file: %w", err)
 	}
 
+	if err := v.appendManifest(backupDir, ManifestEntry{
+		OriginalPath: absSrc,
+		StoredAs:     filepath.ToSlash(stored),
+	}); err != nil {
+		return "", fmt.Errorf("failed to update manifest: %w", err)
+	}
+
 	return destPath, nil
 }
 
 // RestoreFile restores a file from vault to its original location,
-// preserving the mode that was captured at backup time. This keeps
-// sensitive files (e.g. SSH keys with mode 0600) usable after an undo.
+// preserving the mode captured at backup time. The lookup is by the
+// destination's absolute path (matched against the manifest), so
+// same-basename files in different directories are restored to the
+// correct location.
+//
+// Falls back to the legacy basename layout (files/<basename>) for
+// backups created before manifest support, so existing vaults remain
+// usable after upgrade.
 func (v *Vault) RestoreFile(backupDir, destPath string) error {
-	srcName := filepath.Base(destPath)
-	srcPath := filepath.Join(backupDir, "files", srcName)
+	absDest, err := filepath.Abs(destPath)
+	if err != nil {
+		absDest = filepath.Clean(destPath)
+	}
+
+	srcPath := ""
+
+	// Preferred: look up via manifest.
+	if m, err := v.readManifest(backupDir); err == nil {
+		for _, fe := range m.Files {
+			if fe.OriginalPath == absDest {
+				srcPath = filepath.Join(backupDir, "files", filepath.FromSlash(fe.StoredAs))
+				break
+			}
+		}
+	}
+
+	// Legacy fallback: basename layout.
+	if srcPath == "" {
+		legacy := filepath.Join(backupDir, "files", filepath.Base(destPath))
+		if _, err := os.Stat(legacy); err == nil {
+			srcPath = legacy
+		}
+	}
+
+	if srcPath == "" {
+		return fmt.Errorf("no backup found for %s", destPath)
+	}
 
 	info, err := os.Stat(srcPath)
 	if err != nil {
@@ -96,6 +178,78 @@ func (v *Vault) RestoreFile(backupDir, destPath string) error {
 	}
 
 	return nil
+}
+
+// storedPathFor returns the relative path under <backup>/files/
+// where the given original absolute path is stored. We strip the
+// leading "/" so the path stays relative; on Windows we'd also
+// strip the drive letter, but cmdguard targets Unix.
+func storedPathFor(absSrc string) string {
+	rel := absSrc
+	if strings.HasPrefix(rel, string(filepath.Separator)) {
+		rel = rel[1:]
+	}
+	if rel == "" {
+		// Pathological: someone tried to back up the root. Use a
+		// placeholder name; the manifest still has the real path.
+		rel = "_root_"
+	}
+	return rel
+}
+
+// readManifest loads the manifest.json from backupDir, returning an
+// empty manifest if the file does not exist (so callers can treat
+// "no manifest" as the legacy/basename layout).
+func (v *Vault) readManifest(backupDir string) (*Manifest, error) {
+	path := filepath.Join(backupDir, manifestFileName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &Manifest{Version: ManifestVersion}, nil
+		}
+		return nil, err
+	}
+	var m Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, fmt.Errorf("failed to parse manifest: %w", err)
+	}
+	return &m, nil
+}
+
+// appendManifest adds a single entry to backupDir/manifest.json,
+// preserving any existing entries. We rewrite the whole file each
+// time because manifests are tiny (a few entries per backup) and
+// the simpler write-rewrite avoids partial-write corruption that
+// pure append would expose.
+func (v *Vault) appendManifest(backupDir string, entry ManifestEntry) error {
+	m, err := v.readManifest(backupDir)
+	if err != nil {
+		return err
+	}
+	if m.Version == 0 {
+		m.Version = ManifestVersion
+	}
+
+	// Replace any prior entry for the same OriginalPath so a single
+	// backup that re-saves the same file (unlikely but defensible)
+	// does not accumulate duplicates.
+	replaced := false
+	for i, fe := range m.Files {
+		if fe.OriginalPath == entry.OriginalPath {
+			m.Files[i] = entry
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		m.Files = append(m.Files, entry)
+	}
+
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(backupDir, manifestFileName), data, 0644)
 }
 
 // PurgeExpired removes backups older than retention_days
@@ -227,15 +381,7 @@ func (v *Vault) ListAll() ([]BackupInfo, error) {
 		}
 
 		backupDir := filepath.Join(v.dir, entry.Name())
-		filesDir := filepath.Join(backupDir, "files")
-		var fileNames []string
-		if fEntries, err := os.ReadDir(filesDir); err == nil {
-			for _, fe := range fEntries {
-				if !fe.IsDir() {
-					fileNames = append(fileNames, fe.Name())
-				}
-			}
-		}
+		fileNames := listBackupFiles(backupDir)
 
 		expired := false
 		if !cutoff.IsZero() && t.Before(cutoff) {
@@ -299,4 +445,39 @@ func (v *Vault) FindBackupDir(id string) string {
 		}
 	}
 	return match
+}
+
+// listBackupFiles returns the original paths of all files saved in a
+// backup directory. It prefers manifest.json (one entry per save call,
+// recorded with the file's original absolute path) and falls back to
+// scanning files/ for legacy backups created before manifest support.
+//
+// Display callers (path / vault list) only need *names* to show, but
+// returning the original paths keeps the data more useful — and the
+// undo flow uses this to know which files belong to a backup without
+// guessing from basenames.
+func listBackupFiles(backupDir string) []string {
+	manifestPath := filepath.Join(backupDir, manifestFileName)
+	if data, err := os.ReadFile(manifestPath); err == nil {
+		var m Manifest
+		if json.Unmarshal(data, &m) == nil && len(m.Files) > 0 {
+			out := make([]string, 0, len(m.Files))
+			for _, fe := range m.Files {
+				out = append(out, fe.OriginalPath)
+			}
+			return out
+		}
+	}
+
+	// Legacy fallback: list whatever filenames live under files/.
+	filesDir := filepath.Join(backupDir, "files")
+	var names []string
+	if fEntries, err := os.ReadDir(filesDir); err == nil {
+		for _, fe := range fEntries {
+			if !fe.IsDir() {
+				names = append(names, fe.Name())
+			}
+		}
+	}
+	return names
 }

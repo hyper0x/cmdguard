@@ -138,15 +138,19 @@ func printVaultInfo(dir string) {
 			continue
 		}
 		backupDirs = append(backupDirs, e)
-		// Estimate disk usage by summing file sizes in files/ subdir
+		// Estimate disk usage by walking files/ recursively. Backups
+		// now use a nested layout (files/etc/foo.conf) so a single
+		// ReadDir would miss most of the bytes.
 		filesDir := filepath.Join(dir, e.Name(), "files")
-		if fEntries, err := os.ReadDir(filesDir); err == nil {
-			for _, fe := range fEntries {
-				if info, err := fe.Info(); err == nil {
-					totalSize += info.Size()
-				}
+		_ = filepath.WalkDir(filesDir, func(_ string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
 			}
-		}
+			if info, err := d.Info(); err == nil {
+				totalSize += info.Size()
+			}
+			return nil
+		})
 	}
 
 	if len(backupDirs) == 0 {
