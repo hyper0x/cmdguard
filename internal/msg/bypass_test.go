@@ -45,10 +45,20 @@ func TestValidateBypass(t *testing.T) {
 		{"mac-studio/qwenpaw/ai_research/todo", false, "'todo' as task"},
 		{"mac-studio/qwenpaw/ai_research/changeme", false, "'changeme'"},
 		{"mac-studio/{platform}/ai_research/x", false, "curly braces"},
+		// Newly-added dummy tokens: these are extremely common AI-agent
+		// fillers that must not pollute the audit trail.
+		{"test/test/test/test", false, "all-'test' filler"},
+		{"mac-studio/qwenpaw/ai_research/test", false, "trailing 'test' placeholder"},
+		{"mac-studio/qwenpaw/ai_research/demo", false, "'demo' as task"},
+		{"dummy/qwenpaw/ai_research/cleanup", false, "'dummy' as host"},
+		{"mac-studio/fake/ai_research/cleanup", false, "'fake' as platform"},
+		{"mac-studio/qwenpaw/temp/cleanup", false, "'temp' as agent"},
 
 		// Valid: real values that *contain* placeholder words but are not equal to them
 		{"mac-host/qwen-platform/ai_agent/cleanup-task", true, "words appear inside segments but not equal"},
 		{"agent_research/qwenpaw/ai_research/cleanup", true, "'agent_research' is a real ID, not 'agent'"},
+		{"test-host/qwenpaw/ai_research/cleanup", true, "'test-host' contains 'test' but isn't equal"},
+		{"mac-studio/qwenpaw/ai_research/test-cleanup", true, "'test-cleanup' contains 'test' but isn't equal"},
 	}
 
 	for _, tt := range tests {
