@@ -54,38 +54,42 @@ func matchPath(path, pattern string) bool {
 	path = filepath.Clean(path)
 	pattern = filepath.Clean(pattern)
 
-	// If pattern starts with **, it matches any prefix
+	// Pattern starts with `**` — matches if `path` ends with the suffix.
+	//
+	// We deliberately do NOT use strings.Contains here: `**` is meant to
+	// span path components, not arbitrary substrings. Using Contains would
+	// make `**.key` match `file.keystore` (because ".key" is a substring
+	// of ".keystore"), which is a security false-positive — protected
+	// files would block unrelated paths.
 	if strings.HasPrefix(pattern, "**") {
 		suffix := strings.TrimPrefix(pattern, "**")
 		if suffix == "" {
 			return true
 		}
-		return strings.HasSuffix(path, suffix) || strings.Contains(path, suffix)
+		return strings.HasSuffix(path, suffix)
 	}
 
-	// If pattern ends with **, it matches any suffix
+	// Pattern ends with `/**` — matches `prefix` itself or anything strictly
+	// inside `prefix/`. The trailing `/` boundary is REQUIRED to prevent
+	// `/etc/**` from matching `/etcd/foo` (different directory whose name
+	// merely starts with the prefix).
 	if strings.HasSuffix(pattern, "**") {
 		prefix := strings.TrimSuffix(pattern, "/**")
-		return strings.HasPrefix(path, prefix)
+		return path == prefix || strings.HasPrefix(path, prefix+"/")
 	}
 
-	// For patterns like *.key or file.???, match basename
+	// Basename glob: pattern has wildcards but no `/` (e.g. *.key, file.???).
 	if !strings.Contains(pattern, "/") && (strings.Contains(pattern, "*") || strings.Contains(pattern, "?")) {
 		base := filepath.Base(path)
 		return matchGlob(base, pattern)
 	}
 
-	// For full path patterns without wildcards, exact match
+	// Full path without wildcards — exact match.
 	if !strings.Contains(pattern, "*") {
 		return path == pattern
 	}
 
-	// Fall back to path prefix matching for patterns like /etc/**
-	if strings.HasSuffix(pattern, "/**") {
-		prefix := strings.TrimSuffix(pattern, "/**")
-		return strings.HasPrefix(path, prefix)
-	}
-
+	// Full-path glob fallback (e.g. /tmp/file.*).
 	return matchGlob(path, pattern)
 }
 
