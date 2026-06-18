@@ -321,7 +321,7 @@ func RunGuard(cmdName string, args []string) {
 			Message: result.Message,
 			Bypass:  bypassID,
 		}
-		entry.ID = fmt.Sprintf("%x", time.Now().UnixNano())[:12]
+		entry.ID = log.NewID()
 		entry.Timestamp = time.Now().Format(time.RFC3339)
 
 		// For mv, store source paths in message for undo reference

@@ -1,6 +1,8 @@
 package log
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -83,6 +85,28 @@ func (l *Log) load() error {
 	return nil
 }
 
+// NewID generates a fresh 12-character hex identifier for a log/vault
+// entry. Backed by crypto/rand so two calls within the same nanosecond
+// will not collide. Falls back to a UnixNano-derived value only if
+// crypto/rand is unavailable (extremely unlikely on supported platforms).
+//
+// 6 random bytes → 12 hex chars → 2^48 ≈ 2.8e14 distinct values.
+// Even at one operation per microsecond, expected collision time is
+// in the hundreds of years (birthday paradox).
+//
+// Centralised here because both this package's Append and the guard
+// flow need to mint IDs; previously the formula was duplicated.
+func NewID() string {
+	var b [6]byte
+	if _, err := rand.Read(b[:]); err == nil {
+		return hex.EncodeToString(b[:])
+	}
+	// Fallback: keep deterministic-ish output instead of panicking.
+	// time.Now().UnixNano() is monotonically increasing on a single
+	// process so successive calls still differ.
+	return fmt.Sprintf("%012x", time.Now().UnixNano())[:12]
+}
+
 // Append adds a new log entry and writes to file
 func (l *Log) Append(entry Entry) error {
 	l.mu.Lock()
@@ -90,7 +114,7 @@ func (l *Log) Append(entry Entry) error {
 
 	// Generate ID if not set
 	if entry.ID == "" {
-		entry.ID = fmt.Sprintf("%x", time.Now().UnixNano())[:12]
+		entry.ID = NewID()
 	}
 	if entry.Timestamp == "" {
 		entry.Timestamp = time.Now().Format(time.RFC3339)

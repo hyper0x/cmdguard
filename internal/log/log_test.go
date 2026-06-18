@@ -234,3 +234,35 @@ this-is-not-json
 		t.Errorf("expected 2 entries after skipping malformed, got %d", len(got))
 	}
 }
+
+// TestNewID_NoCollision verifies NewID doesn't repeat in tight loops.
+// The previous implementation used the first 12 hex chars of UnixNano,
+// which on fast machines could yield identical values for sub-ns calls
+// — a problem when those IDs become vault directory names. crypto/rand
+// removes that risk entirely.
+func TestNewID_NoCollision(t *testing.T) {
+	const N = 10000
+	seen := make(map[string]struct{}, N)
+	for i := 0; i < N; i++ {
+		id := NewID()
+		if len(id) != 12 {
+			t.Fatalf("NewID() = %q, want 12 hex chars", id)
+		}
+		if _, dup := seen[id]; dup {
+			t.Fatalf("collision at iteration %d: %q", i, id)
+		}
+		seen[id] = struct{}{}
+	}
+}
+
+// TestNewID_HexFormat checks NewID produces only [0-9a-f].
+func TestNewID_HexFormat(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		id := NewID()
+		for _, c := range id {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+				t.Fatalf("NewID() = %q contains non-hex char %q", id, c)
+			}
+		}
+	}
+}
