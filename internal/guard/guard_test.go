@@ -49,9 +49,11 @@ func TestMatchPath_DoubleStarOnly(t *testing.T) {
 }
 
 func TestMatchPath_DoubleStarInfix(t *testing.T) {
-	// After ExpandHome, ~/.ssh/** becomes /Users/xxx/.ssh/**
-	// This tests the pattern matching after expansion
-	if !matchPath("/Users/haolin/.ssh/id_rsa", "/Users/haolin/.ssh/**") {
+	// After ExpandHome, ~/.ssh/** becomes /home/x/.ssh/** (or similar).
+	// Use a neutral path here — never embed the developer's real $HOME
+	// in tests, both for portability and to avoid leaking PII into the
+	// public repo.
+	if !matchPath("/home/x/.ssh/id_rsa", "/home/x/.ssh/**") {
 		t.Error("matchPath should match .ssh/**")
 	}
 }
@@ -71,6 +73,115 @@ func TestMatchPath_GlobSingleChar(t *testing.T) {
 	}
 	if matchPath("file.txt", "file.????") {
 		t.Error("matchPath(file.txt, file.????) should be false")
+	}
+}
+
+// TestMatchPath_DoubleStarPrefixSuffix covers the "**suffix" branch:
+// pattern starts with `**` followed by a non-empty suffix.
+// (Distinct from the bare "**" case above.)
+//
+// Important: `**suffix` matches only when the path ENDS WITH suffix.
+// We deliberately do not match arbitrary substrings — `**.key` must
+// not match `file.keystore` or `/a/.key/file`, otherwise protected
+// rules would over-match.
+func TestMatchPath_DoubleStarPrefixSuffix(t *testing.T) {
+	// Match: path ends with the suffix.
+	if !matchPath("/a/b/secret.key", "**.key") {
+		t.Error("matchPath(/a/b/secret.key, **.key) should be true")
+	}
+	// No match: suffix appears in the middle, not at the end.
+	if matchPath("/a/.key/file", "**.key") {
+		t.Error("matchPath(/a/.key/file, **.key) should be false (mid-path)")
+	}
+	// No match: longer extension that merely contains the suffix.
+	if matchPath("/a/b/file.keystore", "**.key") {
+		t.Error("matchPath(/a/b/file.keystore, **.key) should be false")
+	}
+	// No match: completely unrelated.
+	if matchPath("/a/b/file.txt", "**.key") {
+		t.Error("matchPath(/a/b/file.txt, **.key) should be false")
+	}
+}
+
+// TestMatchPath_DoubleStarSuffixBoundary guards against the regression
+// where /etc/** matched /etcd/foo (bug fixed by requiring `/` boundary).
+// Without this test, the prefix-only check would silently regress and
+// rules would falsely fire on directories whose names happen to start
+// with the same letters as a protected one.
+func TestMatchPath_DoubleStarSuffixBoundary(t *testing.T) {
+	pattern := "/etc/**"
+	// Match: exact prefix path itself.
+	if !matchPath("/etc", pattern) {
+		t.Error("/etc should match /etc/**")
+	}
+	// Match: anything strictly inside /etc/.
+	if !matchPath("/etc/passwd", pattern) {
+		t.Error("/etc/passwd should match /etc/**")
+	}
+	if !matchPath("/etc/ssh/sshd_config", pattern) {
+		t.Error("/etc/ssh/sshd_config should match /etc/**")
+	}
+	// No match: different directory whose name starts with "etc".
+	if matchPath("/etcd", pattern) {
+		t.Error("/etcd should NOT match /etc/**")
+	}
+	if matchPath("/etcd/foo", pattern) {
+		t.Error("/etcd/foo should NOT match /etc/**")
+	}
+	// No match: different ssh-related dir.
+	if matchPath("/Users/x/.ssh-backup/id_rsa", "/Users/x/.ssh/**") {
+		t.Error("/.ssh-backup/* should NOT match /.ssh/**")
+	}
+}
+
+// TestMatchPath_GlobFallback covers line 89: full-path glob fallback
+// for patterns that contain "/" and wildcards but don't start/end with **.
+func TestMatchPath_GlobFallback(t *testing.T) {
+	// Single * in the middle of a path — falls through to matchGlob.
+	if !matchPath("/tmp/file.log", "/tmp/file.*") {
+		t.Error("matchPath(/tmp/file.log, /tmp/file.*) should be true")
+	}
+	if matchPath("/var/file.log", "/tmp/file.*") {
+		t.Error("matchPath(/var/file.log, /tmp/file.*) should be false")
+	}
+}
+
+// TestMatchPath_TildeNoExpand confirms matchPath itself does NOT expand ~.
+// (Expansion happens in config.ExpandHome before this is called.)
+// This is a defensive test: if someone removes ExpandHome upstream, callers
+// still get a sane "no match" rather than a silent false positive.
+func TestMatchPath_TildeNoExpand(t *testing.T) {
+	// Literal tilde paths should match each other exactly.
+	if !matchPath("~/.ssh/id_rsa", "~/.ssh/**") {
+		t.Error("matchPath should match literal tilde paths against tilde patterns")
+	}
+}
+
+// TestCheck_PrefixBoundaryRegression is an end-to-end regression test
+// for the matchPath fix: a rule of /etc/** must NOT cause Check to
+// reject paths under /etcd/. Without the `/` boundary requirement,
+// users got false rejections on innocent paths like /etcd-data.
+func TestCheck_PrefixBoundaryRegression(t *testing.T) {
+	cfg := &config.Config{
+		Protect: config.ProtectConfig{
+			Reject: []string{"/etc/**"},
+		},
+	}
+	// Inside /etc/ — must be rejected.
+	if r := Check(cfg, "rm", []string{"/etc/passwd"}); r.Action != "reject" {
+		t.Errorf("/etc/passwd: action=%s, want reject", r.Action)
+	}
+	// /etc itself — must be rejected (the prefix path).
+	if r := Check(cfg, "rm", []string{"/etc"}); r.Action != "reject" {
+		t.Errorf("/etc: action=%s, want reject", r.Action)
+	}
+	// /etcd — different directory; must NOT be rejected.
+	if r := Check(cfg, "rm", []string{"/etcd"}); r.Action == "reject" {
+		t.Errorf("/etcd: should NOT be rejected by /etc/** rule")
+	}
+	// /etcd-data/snapshot — must NOT be rejected.
+	if r := Check(cfg, "rm", []string{"/etcd-data/snapshot"}); r.Action == "reject" {
+		t.Errorf("/etcd-data/snapshot: should NOT be rejected by /etc/** rule")
 	}
 }
 
