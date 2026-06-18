@@ -16,6 +16,72 @@ import (
 	"github.com/hyper0x/cmdguard/internal/vault"
 )
 
+// autoPurgeIfEnabled removes vault backups past their retention
+// horizon and marks the corresponding log entries as expired. It is
+// invoked at the start of every guarded command when the
+// vault.auto_purge config knob is true.
+//
+// All errors are intentionally swallowed: a failure to purge or to
+// mark log entries must never block the user's destructive operation.
+// The trade-off is that a misconfigured vault directory will
+// silently retain old backups instead of breaking rm/mv/chmod.
+func autoPurgeIfEnabled(cfg *config.VaultConfig) {
+	if !cfg.AutoPurge {
+		return
+	}
+	v, err := vault.New(cfg)
+	if err != nil {
+		return
+	}
+	purged, _ := v.PurgeExpired()
+	if len(purged) == 0 {
+		return
+	}
+	if logger, err := log.New(); err == nil {
+		_ = logger.MarkExpired(purged)
+	}
+}
+
+// shouldFallThroughForMissing implements the existence-check policy
+// described at the call site: rm/chmod must reject any missing
+// target (and exits the process), while mv should fall through to
+// the underlying command when its destination does not yet exist
+// (the create-new-file case). Returns true only in the mv-create
+// path; rm/chmod never reach here without exiting first.
+//
+// Extracted from RunGuard so the main flow reads as a sequence of
+// policy decisions rather than nested ifs. The os.Exit lives inside
+// the helper because it is part of the policy: 'reject and stop' is
+// the only sane response to a typo'd rm target.
+func shouldFallThroughForMissing(cmdName string, targets []string, verbose bool) bool {
+	if cmdName == "mv" {
+		// guard.ExtractTargets returns only the destination for mv.
+		dest := targets[0]
+		if _, err := os.Stat(dest); os.IsNotExist(err) {
+			if verbose {
+				fmt.Println(msg.GuardMvDestNew)
+			}
+			return true
+		}
+		return false
+	}
+
+	// rm / chmod: every target must exist. Report each missing path
+	// (so the user sees them all in one go, not just the first) and
+	// exit non-zero.
+	missing := false
+	for _, t := range targets {
+		if _, err := os.Stat(t); os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, msg.GuardTargetMissing+"\n", cmdName, t)
+			missing = true
+		}
+	}
+	if missing {
+		os.Exit(1)
+	}
+	return false
+}
+
 // appendLog records an audit entry, swallowing logger-construction
 // errors so a degraded log directory cannot block the user's
 // destructive operation. The previous code repeated this pattern
@@ -85,19 +151,9 @@ func RunGuard(cmdName string, args []string) {
 		os.Exit(1)
 	}
 
-	// Auto-purge expired vault backups if enabled
-	if cfg.Vault.AutoPurge {
-		v, err := vault.New(&cfg.Vault)
-		if err == nil {
-			purged, _ := v.PurgeExpired()
-			if len(purged) > 0 {
-				logger, err := log.New()
-				if err == nil {
-					logger.MarkExpired(purged)
-				}
-			}
-		}
-	}
+	// Auto-purge expired vault backups if enabled. Best-effort:
+	// degraded vault/log dirs must not block a destructive op.
+	autoPurgeIfEnabled(&cfg.Vault)
 
 	// Extract target paths from arguments
 	targets := guard.ExtractTargets(cmdName, args)
@@ -121,28 +177,9 @@ func RunGuard(cmdName string, args []string) {
 	// (mv creates a new file). In that case there is no file to overwrite,
 	// so no protection is needed — fall through to the underlying mv.
 	// If the destination DOES exist, we keep the normal protection flow.
-	if cmdName == "mv" {
-		// guard.ExtractTargets returns only the destination for mv
-		dest := targets[0]
-		if _, err := os.Stat(dest); os.IsNotExist(err) {
-			if verbose {
-				fmt.Println(msg.GuardMvDestNew)
-			}
-			execOriginal(cmdName, args, verbose)
-			return
-		}
-	} else {
-		// rm / chmod: every target must exist
-		missing := false
-		for _, t := range targets {
-			if _, err := os.Stat(t); os.IsNotExist(err) {
-				fmt.Fprintf(os.Stderr, msg.GuardTargetMissing+"\n", cmdName, t)
-				missing = true
-			}
-		}
-		if missing {
-			os.Exit(1)
-		}
+	if shouldFallThroughForMissing(cmdName, targets, verbose) {
+		execOriginal(cmdName, args, verbose)
+		return
 	}
 
 	// Check protection rules
