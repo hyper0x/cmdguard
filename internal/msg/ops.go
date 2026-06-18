@@ -124,13 +124,78 @@ const (
 
 	// VaultPurged is shown after successful cleanup.
 	VaultPurged = TagCmdguard + " cleaned %d expired backup(s)"
+
+	// VaultListNoBackups is shown when the vault is empty.
+	VaultListNoBackups = TagCmdguard + " no vault backups"
+
+	// VaultListTableHeader is the header for vault list table output.
+	VaultListTableHeader = "%-12s  %-19s  %-20s  %s\n"
+
+	// VaultListTableSeparator is the separator line for vault list table output.
+	VaultListTableSeparator = "------------  -------------------  --------------------  --------"
+
+	// VaultListTableRow is the format for each vault list row.
+	VaultListTableRow = "%-12s  %-19s  %-20s  %s\n"
+
+	// VaultListSummary is the summary line for vault list.
+	VaultListSummary = TagCmdguard + " total: %d backup(s)"
+
+	// VaultListStatusExpired is the status tag for expired backups.
+	VaultListStatusExpired = "expired"
 )
 
-// ─── Config command output ──────────────────────────────────────────
+// ─── Path command output ────────────────────────────────────────────
 
 const (
-	// ConfigHeader is the header for config display.
-	ConfigHeader = TagCmdguard + " current configuration:"
+	// PathHeader is the header for path display.
+	PathHeader = TagCmdguard + " cmdguard directory structure"
+
+	// PathConfigDir is the config directory line.
+	PathConfigDir = "  Config directory: %s"
+
+	// PathConfigFile is the config file line.
+	PathConfigFile = "  Config file:      %s  (%s)"
+
+	// PathLogDir is the log directory line.
+	PathLogDir = "  Log directory: %s"
+
+	// PathVaultDir is the vault directory line.
+	PathVaultDir = "  Vault directory: %s"
+
+	// PathBinDir is the bin directory line.
+	PathBinDir = "  Bin directory: %s"
+
+	// PathFileNotExist is shown when a file doesn't exist.
+	PathFileNotExist = "not exist"
+
+	// PathDirNotExist is shown when a directory doesn't exist.
+	PathDirNotExist = "not exist"
+
+	// PathDirEmpty is shown when a directory is empty.
+	PathDirEmpty = "empty"
+
+	// PathDirError is shown when reading a directory fails.
+	PathDirError = "error"
+
+	// PathFileCount is the file count summary.
+	PathFileCount = "%d file(s)"
+
+	// PathVaultSummary is the vault summary line.
+	PathVaultSummary = "%d backup(s), %s"
+)
+
+const (
+	// ConfigEffectiveHeader is the header for effective (merged) config display.
+	ConfigEffectiveHeader = TagCmdguard + " effective configuration:"
+
+	// ConfigDefaultHeader is the header for default config display.
+	ConfigDefaultHeader = TagCmdguard + " built-in default configuration:"
+
+	// ConfigRawHeader is the header for raw config file display.
+	ConfigRawHeader = TagCmdguard + " raw config file: %s"
+
+	// ConfigRawNotExist is shown when the config file doesn't exist.
+	ConfigRawNotExist = TagCmdguard + " config file %s does not exist"
 
 	// ConfigFile is the config file path line.
 	ConfigFile = "  Config file: %s"

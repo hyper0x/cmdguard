@@ -1,0 +1,172 @@
+package subcmd
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/hyper0x/cmdguard/internal/config"
+	"github.com/hyper0x/cmdguard/internal/msg"
+)
+
+// RunPath handles the "path" command
+func RunPath(args []string) {
+	cfgDir := config.ConfigDir()
+	cfgPath := config.ConfigPath()
+
+	fmt.Println(msg.PathHeader)
+	fmt.Println()
+
+	// Config directory
+	fmt.Printf(msg.PathConfigDir+"\n", cfgDir)
+
+	// Config file
+	cfgFileInfo := msg.PathFileNotExist
+	if fi, err := os.Stat(cfgPath); err == nil {
+		// Count lines
+		lineCount := 0
+		if data, err := os.ReadFile(cfgPath); err == nil {
+			lineCount = bytes.Count(data, []byte{'\n'})
+		}
+		cfgFileInfo = fmt.Sprintf("%s, %d lines", formatFileSize(fi.Size()), lineCount)
+	}
+	fmt.Printf(msg.PathConfigFile+"\n", cfgPath, cfgFileInfo)
+
+	// Log directory
+	logDir := filepath.Join(cfgDir, "log")
+	fmt.Println()
+	fmt.Printf(msg.PathLogDir+"\n", logDir)
+	printDirFiles(logDir, ".log")
+
+	// Vault directory
+	vaultDir := filepath.Join(cfgDir, "vault")
+	fmt.Println()
+	fmt.Printf(msg.PathVaultDir+"\n", vaultDir)
+	printVaultInfo(vaultDir)
+
+	// Bin directory
+	binDir := filepath.Join(cfgDir, "bin")
+	fmt.Println()
+	fmt.Printf(msg.PathBinDir+"\n", binDir)
+	printDirFiles(binDir, "")
+}
+
+// printDirFiles lists files in a directory, newest first, with a count summary.
+// extFilter filters by extension (e.g. ".log"), empty means show all.
+func printDirFiles(dir string, extFilter string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Printf("  (%s)\n", msg.PathDirNotExist)
+		} else {
+			fmt.Printf("  (%s: %v)\n", msg.PathDirError, err)
+		}
+		return
+	}
+
+	// Filter and collect file info
+	type fileInfo struct {
+		name    string
+		modTime int64 // for sorting
+	}
+	var files []fileInfo
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if extFilter != "" && !strings.HasSuffix(e.Name(), extFilter) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, fileInfo{name: e.Name(), modTime: info.ModTime().Unix()})
+	}
+
+	if len(files) == 0 {
+		fmt.Printf("  (%s)\n", msg.PathDirEmpty)
+		return
+	}
+
+	// Sort newest first
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].modTime > files[j].modTime
+	})
+
+	// Show up to 5 files
+	showCount := len(files)
+	if showCount > 5 {
+		showCount = 5
+	}
+	for i := 0; i < showCount; i++ {
+		prefix := "├─ "
+		if i == showCount-1 {
+			prefix = "└─ "
+		}
+		fmt.Printf("  %s%s\n", prefix, files[i].name)
+	}
+
+	if len(files) > 5 {
+		fmt.Printf("  ...\n")
+	}
+
+	// Summary
+	summary := fmt.Sprintf(msg.PathFileCount, len(files))
+	fmt.Printf("  (%s)\n", summary)
+}
+
+// printVaultInfo shows vault summary: backup count and disk usage
+func printVaultInfo(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Printf("  (%s)\n", msg.PathDirNotExist)
+		} else {
+			fmt.Printf("  (%s: %v)\n", msg.PathDirError, err)
+		}
+		return
+	}
+
+	var backupDirs []os.DirEntry
+	var totalSize int64
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		backupDirs = append(backupDirs, e)
+		// Estimate disk usage by summing file sizes in files/ subdir
+		filesDir := filepath.Join(dir, e.Name(), "files")
+		if fEntries, err := os.ReadDir(filesDir); err == nil {
+			for _, fe := range fEntries {
+				if info, err := fe.Info(); err == nil {
+					totalSize += info.Size()
+				}
+			}
+		}
+	}
+
+	if len(backupDirs) == 0 {
+		fmt.Printf("  (%s)\n", msg.PathDirEmpty)
+		return
+	}
+
+	fmt.Printf("  (%s)\n", fmt.Sprintf(msg.PathVaultSummary, len(backupDirs), formatFileSize(totalSize)))
+}
+
+// formatFileSize returns a human-readable file size
+func formatFileSize(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%dB", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f%cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}

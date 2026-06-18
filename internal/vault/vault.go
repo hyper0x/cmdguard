@@ -43,7 +43,10 @@ func (v *Vault) BackupDir(id string) string {
 	return filepath.Join(v.dir, fmt.Sprintf("%s_%s", ts, id))
 }
 
-// SaveFile copies a file into the vault
+// SaveFile copies a file into the vault, preserving the source file's
+// permission bits. Preserving mode matters because restoring a file
+// like ~/.ssh/id_rsa with default 0644 would silently weaken its
+// security posture (sshd refuses keys with permissive modes).
 func (v *Vault) SaveFile(backupDir, srcPath string) (string, error) {
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create backup directory: %w", err)
@@ -55,29 +58,40 @@ func (v *Vault) SaveFile(backupDir, srcPath string) (string, error) {
 		return "", fmt.Errorf("failed to create files directory: %w", err)
 	}
 
+	// Read source file along with its mode.
+	info, err := os.Stat(srcPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to stat source file: %w", err)
+	}
 	data, err := os.ReadFile(srcPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read source file: %w", err)
 	}
 
-	if err := os.WriteFile(destPath, data, 0644); err != nil {
+	if err := os.WriteFile(destPath, data, info.Mode().Perm()); err != nil {
 		return "", fmt.Errorf("failed to write backup file: %w", err)
 	}
 
 	return destPath, nil
 }
 
-// RestoreFile restores a file from vault to its original location
+// RestoreFile restores a file from vault to its original location,
+// preserving the mode that was captured at backup time. This keeps
+// sensitive files (e.g. SSH keys with mode 0600) usable after an undo.
 func (v *Vault) RestoreFile(backupDir, destPath string) error {
 	srcName := filepath.Base(destPath)
 	srcPath := filepath.Join(backupDir, "files", srcName)
 
+	info, err := os.Stat(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to stat backup file: %w", err)
+	}
 	data, err := os.ReadFile(srcPath)
 	if err != nil {
 		return fmt.Errorf("failed to read backup file: %w", err)
 	}
 
-	if err := os.WriteFile(destPath, data, 0644); err != nil {
+	if err := os.WriteFile(destPath, data, info.Mode().Perm()); err != nil {
 		return fmt.Errorf("failed to restore file: %w", err)
 	}
 
@@ -170,6 +184,78 @@ func (v *Vault) ListExpired() ([]string, error) {
 
 	sort.Strings(expired)
 	return expired, nil
+}
+
+// BackupInfo holds display info for a vault backup entry
+type BackupInfo struct {
+	ID        string
+	Timestamp time.Time
+	Dir       string // full path to the backup directory
+	Files     []string
+	Expired   bool
+}
+
+// ListAll returns all backup entries sorted by timestamp (newest first).
+func (v *Vault) ListAll() ([]BackupInfo, error) {
+	entries, err := os.ReadDir(v.dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read vault directory: %w", err)
+	}
+
+	var cutoff time.Time
+	if v.cfg.RetentionDays > 0 {
+		cutoff = time.Now().AddDate(0, 0, -v.cfg.RetentionDays)
+	}
+
+	var backups []BackupInfo
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		parts := strings.SplitN(entry.Name(), "_", 3)
+		if len(parts) < 3 {
+			continue
+		}
+
+		t, err := time.Parse("20060102_150405", parts[0]+"_"+parts[1])
+		if err != nil {
+			continue
+		}
+
+		backupDir := filepath.Join(v.dir, entry.Name())
+		filesDir := filepath.Join(backupDir, "files")
+		var fileNames []string
+		if fEntries, err := os.ReadDir(filesDir); err == nil {
+			for _, fe := range fEntries {
+				if !fe.IsDir() {
+					fileNames = append(fileNames, fe.Name())
+				}
+			}
+		}
+
+		expired := false
+		if !cutoff.IsZero() && t.Before(cutoff) {
+			expired = true
+		}
+
+		backups = append(backups, BackupInfo{
+			ID:        parts[2],
+			Timestamp: t,
+			Dir:       backupDir,
+			Files:     fileNames,
+			Expired:   expired,
+		})
+	}
+
+	sort.Slice(backups, func(i, j int) bool {
+		return backups[i].Timestamp.After(backups[j].Timestamp)
+	})
+
+	return backups, nil
 }
 
 // BackupExists checks if a backup directory exists for the given ID (supports prefix)
