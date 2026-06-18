@@ -34,13 +34,22 @@ func main() {
 		subcmd.RunVault(os.Args[2:])
 	case "config":
 		subcmd.RunConfig(os.Args[2:])
+	case "path":
+		subcmd.RunPath(os.Args[2:])
 	default:
-		// sub is a command name like rm, mv, chmod
-		guardCmd := sub
-		args := os.Args[2:]
-		subcmd.Version = version
-		subcmd.Commit = commit
-		subcmd.RunGuard(guardCmd, args)
+		// Anything else: only proceed if it's a guarded command name
+		// (rm/mv/chmod). Unknown subcommands fall through to a clear
+		// error rather than being silently routed into RunGuard.
+		if subcmd.IsGuarded(sub) {
+			args := os.Args[2:]
+			subcmd.Version = version
+			subcmd.Commit = commit
+			subcmd.RunGuard(sub, args)
+		} else {
+			fmt.Fprintf(os.Stderr, "[cmdguard] error: unknown subcommand '%s'\n", sub)
+			fmt.Fprintf(os.Stderr, "Run 'cmdguard --help' for usage.\n")
+			os.Exit(1)
+		}
 	}
 }
 

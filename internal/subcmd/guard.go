@@ -541,10 +541,6 @@ func emitNonTTYRejectionTimeout(cmdName string, args, targets []string, result *
 	}
 }
 
-// Version and Commit are set via -ldflags at build time
-var Version = "dev"
-var Commit = "none"
-
 func printGuardHelp(cmdName string) {
 	fmt.Print(msg.GuardHelp(cmdName))
 }

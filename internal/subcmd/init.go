@@ -33,21 +33,25 @@ func backupFiles(files []string) (string, error) {
 
 	cfgDir := config.ConfigDir()
 
-	for _, src := range files {
+	// addOne keeps the per-file open/close lifetime scoped to a single
+	// iteration. The previous implementation used `defer in.Close()`
+	// directly inside the loop, which kept every file handle open until
+	// the function returned — a leak for large `files` lists.
+	addOne := func(src string) error {
 		in, err := os.Open(src)
 		if err != nil {
-			return "", err
+			return err
 		}
 		defer in.Close()
 
 		info, err := in.Stat()
 		if err != nil {
-			return "", err
+			return err
 		}
 
 		header, err := zip.FileInfoHeader(info)
 		if err != nil {
-			return "", err
+			return err
 		}
 		// Preserve relative path from ~/.cmdguard/
 		rel, err := filepath.Rel(cfgDir, src)
@@ -59,10 +63,15 @@ func backupFiles(files []string) (string, error) {
 
 		out, err := w.CreateHeader(header)
 		if err != nil {
-			return "", err
+			return err
 		}
 
-		if _, err := io.Copy(out, in); err != nil {
+		_, err = io.Copy(out, in)
+		return err
+	}
+
+	for _, src := range files {
+		if err := addOne(src); err != nil {
 			return "", err
 		}
 	}
@@ -101,7 +110,7 @@ func RunInit(args []string) {
 		} else {
 			fmt.Printf(msg.InitDryRunExists+"\n", cfgPath, overwrite)
 		}
-		for _, cmd := range []string{"rm", "mv", "chmod"} {
+		for _, cmd := range GuardedCommands() {
 			scriptPath := filepath.Join(binDir, cmd)
 			if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 				fmt.Printf(msg.InitDryRunCreateScript+"\n", scriptPath)
@@ -139,7 +148,7 @@ func RunInit(args []string) {
 		toBackup = append(toBackup, cfgPath)
 	}
 
-	for _, cmd := range []string{"rm", "mv", "chmod"} {
+	for _, cmd := range GuardedCommands() {
 		scriptPath := filepath.Join(binDir, cmd)
 		_, err := os.Stat(scriptPath)
 		if force && !os.IsNotExist(err) {
@@ -301,7 +310,7 @@ confirm_double_timeout = 10  # seconds per step; 'confirm_double' prompt
 		os.Exit(1)
 	}
 
-	for _, cmd := range []string{"rm", "mv", "chmod"} {
+	for _, cmd := range GuardedCommands() {
 		scriptPath := filepath.Join(binDir, cmd)
 		_, err := os.Stat(scriptPath)
 		needWriteScript := os.IsNotExist(err)
