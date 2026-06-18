@@ -93,7 +93,7 @@ func RunInit(args []string) {
 	}
 
 	cfgDir := config.ConfigDir()
-	binDir := filepath.Join(cfgDir, "bin")
+	binDir := config.BinDir()
 	logDir := filepath.Join(cfgDir, "log")
 	vaultDir := filepath.Join(cfgDir, "vault")
 

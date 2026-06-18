@@ -48,7 +48,7 @@ func RunPath(args []string) {
 	printVaultInfo(vaultDir)
 
 	// Bin directory
-	binDir := filepath.Join(cfgDir, "bin")
+	binDir := config.BinDir()
 	fmt.Println()
 	fmt.Printf(msg.PathBinDir+"\n", binDir)
 	printDirFiles(binDir, "")

@@ -174,3 +174,61 @@ func TestRunConfig_DefaultShowsVaultAndGuard(t *testing.T) {
 		t.Errorf("expected default confirm_double_timeout, got:\n%s", out)
 	}
 }
+
+// TestRunConfig_BinDir verifies the machine-readable --bin-dir mode
+// returns a bare path with no decoration. This contract is load-bearing:
+// the integration guide tells users to compose it directly into PATH:
+//
+//	export PATH="$(cmdguard config --bin-dir):$PATH"
+//
+// If we ever leak '[cmdguard]' tags, blank lines, or trailing prose
+// into this output, that PATH expansion silently breaks.
+func TestRunConfig_BinDir(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv(config.EnvConfigDir, tmp)
+
+	r, w, _ := os.Pipe()
+	old := os.Stdout
+	os.Stdout = w
+
+	RunConfig([]string{"--bin-dir"})
+
+	w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	out := buf.String()
+
+	want := filepath.Join(tmp, "bin") + "\n"
+	if out != want {
+		t.Errorf("--bin-dir output mismatch:\n  got:  %q\n  want: %q", out, want)
+	}
+}
+
+// TestRunConfig_BinDirTrumpsOthers documents the precedence rule:
+// when --bin-dir is combined with --default or --raw, --bin-dir wins.
+// This avoids printing both a multi-line config dump and a path on the
+// same stdout, which would corrupt any shell substitution.
+func TestRunConfig_BinDirTrumpsOthers(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv(config.EnvConfigDir, tmp)
+
+	r, w, _ := os.Pipe()
+	old := os.Stdout
+	os.Stdout = w
+
+	RunConfig([]string{"--default", "--bin-dir", "--raw"})
+
+	w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	out := buf.String()
+
+	if strings.Contains(out, "built-in default") || strings.Contains(out, "raw config") {
+		t.Errorf("--bin-dir should suppress other modes, got:\n%s", out)
+	}
+	if !strings.HasSuffix(strings.TrimRight(out, "\n"), "bin") {
+		t.Errorf("expected bare bin-dir path, got:\n%s", out)
+	}
+}

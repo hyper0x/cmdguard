@@ -69,7 +69,7 @@ Option 1 — Aliases (recommended for humans):
   alias chmod='cmdguard chmod'
 
 Option 2 — PATH hijack (recommended for AI agents):
-  export PATH="` + "`cmdguard env-path`" + `:$PATH"
+  export PATH="$(cmdguard config --bin-dir):$PATH"
   export CMDGUARD_NONINTERACTIVE=1   # skip the 5s/10s confirm wait
 
 After editing, run 'source ~/.zshrc' (or restart your terminal) to apply changes.
