@@ -100,16 +100,47 @@ func RunInit(args []string) {
 	if dryRun {
 		overwrite := msg.OverwriteLabel(force)
 		fmt.Println(msg.InitDryRunHeader)
+
+		// 1. Directory creation — mirrors real-run step 1.
 		fmt.Printf(msg.InitDryRunCreateDir+"\n", cfgDir)
 		fmt.Printf(msg.InitDryRunCreateDir+"\n", binDir)
 		fmt.Printf(msg.InitDryRunCreateDir+"\n", logDir)
 		fmt.Printf(msg.InitDryRunCreateDir+"\n", vaultDir)
+
+		// 2. Backup — mirrors real-run step 3 (which runs before
+		//    config/scripts are written). Previously this line was
+		//    printed AT THE END of dry-run, so users got a misleading
+		//    preview: dry-run said "config will be overwritten, then
+		//    scripts, then a backup will be made", but the real flow
+		//    backs up FIRST. Move it up so the preview matches reality.
 		cfgPath := config.ConfigPath()
-		if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+		_, cfgStatErr := os.Stat(cfgPath)
+		cfgExists := !os.IsNotExist(cfgStatErr)
+		willBackup := false
+		if force && cfgExists {
+			willBackup = true
+		}
+		if !willBackup {
+			for _, cmd := range GuardedCommands() {
+				scriptPath := filepath.Join(binDir, cmd)
+				if _, err := os.Stat(scriptPath); force && !os.IsNotExist(err) {
+					willBackup = true
+					break
+				}
+			}
+		}
+		if willBackup {
+			fmt.Println(msg.InitDryRunBackup)
+		}
+
+		// 3. Config file.
+		if !cfgExists {
 			fmt.Printf(msg.InitDryRunCreateFile+"\n", cfgPath)
 		} else {
 			fmt.Printf(msg.InitDryRunExists+"\n", cfgPath, overwrite)
 		}
+
+		// 4. Wrapper scripts.
 		for _, cmd := range GuardedCommands() {
 			scriptPath := filepath.Join(binDir, cmd)
 			if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
@@ -117,9 +148,6 @@ func RunInit(args []string) {
 			} else {
 				fmt.Printf(msg.InitDryRunExistsScript+"\n", scriptPath, overwrite)
 			}
-		}
-		if force {
-			fmt.Println(msg.InitDryRunBackup)
 		}
 		os.Exit(0)
 	}
