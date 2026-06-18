@@ -16,6 +16,24 @@ import (
 	"github.com/hyper0x/cmdguard/internal/vault"
 )
 
+// appendLog records an audit entry, swallowing logger-construction
+// errors so a degraded log directory cannot block the user's
+// destructive operation. The previous code repeated this pattern
+// (`if logger, err := log.New(); err == nil { logger.Append(e) }`)
+// 9+ times in this file alone — extracting it dedupes the boilerplate
+// and makes the call sites read as audit statements rather than
+// nested error-handling.
+//
+// Any failure to write the audit entry is intentionally silent at
+// this layer: log.Append already prints a warning on its own when
+// the underlying file write fails, and we don't want to leak a
+// second confusing error to stderr from the caller.
+func appendLog(entry log.Entry) {
+	if logger, err := log.New(); err == nil {
+		_ = logger.Append(entry)
+	}
+}
+
 // RunGuard handles rm/mv/chmod commands
 func RunGuard(cmdName string, args []string) {
 	dryRun := false
@@ -154,9 +172,7 @@ func RunGuard(cmdName string, args []string) {
 			Rule:    result.Rule,
 			Message: result.Message,
 		}
-		if logger, err := log.New(); err == nil {
-			logger.Append(logEntry)
-		}
+		appendLog(logEntry)
 		os.Exit(1)
 
 	case msg.LevelConfirmDbl, msg.LevelConfirm:
@@ -175,9 +191,7 @@ func RunGuard(cmdName string, args []string) {
 					Rule:    result.Rule,
 					Message: fmt.Sprintf(msg.GuardBypassInvalidMsg, bypassID),
 				}
-				if logger, err := log.New(); err == nil {
-					logger.Append(logEntry)
-				}
+				appendLog(logEntry)
 				os.Exit(1)
 			}
 			guard.PrintWarning(cmdName, result)
@@ -239,9 +253,7 @@ func RunGuard(cmdName string, args []string) {
 				Rule:    result.Rule,
 				Message: msg.ConfirmCancelledMsg,
 			}
-			if logger, err := log.New(); err == nil {
-				logger.Append(logEntry)
-			}
+			appendLog(logEntry)
 			os.Exit(1)
 		}
 
@@ -263,9 +275,7 @@ func RunGuard(cmdName string, args []string) {
 					Rule:    result.Rule,
 					Message: msg.ConfirmDoubleCancelledMsg,
 				}
-				if logger, err := log.New(); err == nil {
-					logger.Append(logEntry)
-				}
+				appendLog(logEntry)
 				os.Exit(1)
 			}
 		}
@@ -290,9 +300,7 @@ func RunGuard(cmdName string, args []string) {
 			Targets: strings.Join(targets, ", "),
 			Message: "no matching rule, allowed",
 		}
-		if logger, err := log.New(); err == nil {
-			logger.Append(logEntry)
-		}
+		appendLog(logEntry)
 		execOriginal(cmdName, args, verbose)
 		return
 	}
@@ -409,9 +417,7 @@ func RunGuard(cmdName string, args []string) {
 		}
 
 		// Log the operation
-		if logger, err := log.New(); err == nil {
-			logger.Append(entry)
-		}
+		appendLog(entry)
 
 		if verbose {
 			fmt.Printf(msg.GuardExecuting+"\n", cmdName, strings.Join(args, " "))
@@ -577,9 +583,7 @@ func emitNonTTYRejection(cmdName string, args, targets []string, result *guard.R
 		Rule:    result.Rule,
 		Message: logMsg,
 	}
-	if logger, err := log.New(); err == nil {
-		logger.Append(logEntry)
-	}
+	appendLog(logEntry)
 }
 
 // emitNonTTYRejectionTimeout is the timeout-specific variant: it
@@ -599,9 +603,7 @@ func emitNonTTYRejectionTimeout(cmdName string, args, targets []string, result *
 		Rule:    result.Rule,
 		Message: fmt.Sprintf(msg.ConfirmTimeoutLogMsg, seconds),
 	}
-	if logger, err := log.New(); err == nil {
-		logger.Append(logEntry)
-	}
+	appendLog(logEntry)
 }
 
 func printGuardHelp(cmdName string) {
