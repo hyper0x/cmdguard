@@ -1,0 +1,38 @@
+# golangci-lint configuration.
+#
+# We run golangci-lint v2 (`brew install golangci-lint` on macOS).
+# v2 changed the schema: linters live under `linters.enable`, and
+# per-rule exclusions live under `linters.exclusions.rules`.
+#
+# Why this file exists:
+#   1. Pin the active linter set so `golangci-lint run` is reproducible
+#      across contributors and CI (no "default changed in v2.13").
+#   2. Suppress errcheck noise inside *_test.go where the standard
+#      pattern is os.Setenv / w.Close / buf.ReadFrom / os.MkdirAll
+#      without explicit error handling. Production code still gets
+#      the full check.
+#
+# Run:    golangci-lint run ./...
+# Update: golangci-lint config verify
+version: "2"
+
+linters:
+  default: none
+  enable:
+    # Built-ins worth keeping on:
+    - errcheck     # unchecked error returns (catches the real bugs)
+    - govet        # the official go vet rules
+    - ineffassign  # assignments whose result is never read
+    - staticcheck  # SA-, ST-, QF- rules; the most valuable third-party set
+    - unused       # dead code (functions, vars, types)
+
+  exclusions:
+    rules:
+      # Test files often deliberately ignore os.Setenv/Unsetenv,
+      # WriteFile, MkdirAll, w.Close on test pipes, etc. The bug
+      # surface is tiny and the diagnostic clutter from checking
+      # them all is large. Production code still goes through
+      # errcheck unchanged.
+      - path: _test\.go
+        linters:
+          - errcheck
