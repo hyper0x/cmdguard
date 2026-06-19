@@ -15,13 +15,18 @@ import (
 // backupFiles creates a zip archive of all files to be overwritten
 func backupFiles(files []string) (string, error) {
 	backupDir := filepath.Join(config.ConfigDir(), "backup")
-	if err := os.MkdirAll(backupDir, 0755); err != nil {
+	// 0700: this directory holds zip archives of the user's previous
+	// config and wrapper scripts (created on `init --force`). Same
+	// privacy rationale as the rest of ~/.cmdguard.
+	if err := os.MkdirAll(backupDir, 0700); err != nil {
 		return "", err
 	}
 
 	ts := time.Now().Format("20060102_150405")
 	zipPath := filepath.Join(backupDir, fmt.Sprintf("init-%s.zip", ts))
 
+	// #nosec G304 -- zipPath is fully controlled: backupDir is
+	// ~/.cmdguard/backup and the filename is a timestamp we generate.
 	z, err := os.Create(zipPath)
 	if err != nil {
 		return "", err
@@ -46,6 +51,8 @@ func backupFiles(files []string) (string, error) {
 	// directly inside the loop, which kept every file handle open until
 	// the function returned — a leak for large `files` lists.
 	addOne := func(src string) error {
+		// #nosec G304 -- src is a cmdguard-managed path (config.toml,
+		// wrapper scripts). Not user argv.
 		in, err := os.Open(src)
 		if err != nil {
 			return err
@@ -182,12 +189,20 @@ func RunInit(args []string) {
 	}
 
 	// 1. Create directory structure
+	//
+	// 0700 across the board: cfgDir holds config + bin + log + vault.
+	// log and vault both store privacy-sensitive content (audit
+	// trail, copies of deleted files), and the bin dir holds wrapper
+	// scripts that the user's PATH points at — restricting to owner
+	// also makes it harder for another principal to swap a wrapper
+	// out from under the user. The cost is zero for cmdguard's
+	// single-user model.
 	dirs := []string{cfgDir, binDir, logDir, vaultDir}
 	for _, d := range dirs {
 		if info, err := os.Stat(d); err == nil && info.IsDir() {
 			fmt.Printf(msg.InitDirExists+"\n", d)
 		} else {
-			if err := os.MkdirAll(d, 0755); err != nil {
+			if err := os.MkdirAll(d, 0700); err != nil {
 				errExit(msg.ErrMkdir, d, err)
 			}
 			fmt.Printf(msg.InitDirCreated+"\n", d)
@@ -345,7 +360,11 @@ auto_purge = true
 confirm_timeout = 5          # seconds; 'confirm' prompt
 confirm_double_timeout = 10  # seconds per step; 'confirm_double' prompt
 `
-		if err := os.WriteFile(cfgPath, []byte(defaultCfg), 0644); err != nil {
+		// 0600: config.toml may contain protect-rules with paths that
+		// reveal something about the user's filesystem layout. Even
+		// without secrets in the file, there's no reason for it to
+		// be world-readable on a single-user tool.
+		if err := os.WriteFile(cfgPath, []byte(defaultCfg), 0600); err != nil {
 			errExit(msg.ErrWriteFile, cfgPath, err)
 		}
 		if force {
@@ -382,7 +401,20 @@ confirm_double_timeout = 10  # seconds per step; 'confirm_double' prompt
 %s
 exec %s %s "$@"
 `, WrapperSentinel, selfPath, cmd)
-			if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
+			// 0700 on the wrapper script: it must be executable
+			// (other modes like 0600 would defeat the whole
+			// PATH-shim trick) but only the owner needs to run
+			// it. Group/world-execute is unnecessary on a
+			// single-user tool. Note also that the bin directory
+			// itself is 0700 (set in step 1), so even the
+			// permissive bits would not be reachable by other
+			// principals — but stricter mode here is defense in
+			// depth in case someone copies the script elsewhere.
+			//
+			// #nosec G306 -- gosec wants ≤ 0600 for WriteFile, but
+			// a non-executable wrapper script is useless. 0700 is
+			// the strictest mode that lets it run.
+			if err := os.WriteFile(scriptPath, []byte(script), 0700); err != nil {
 				errExit(msg.ErrWriteFile, scriptPath, err)
 			}
 			if force {

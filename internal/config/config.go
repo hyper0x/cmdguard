@@ -234,7 +234,10 @@ func ExpandHome(path string) string {
 
 // flattenProtect converts a ProtectConfig into a flat PathRule slice
 func flattenProtect(p *ProtectConfig) []PathRule {
-	var rules []PathRule
+	// Preallocate: we know the final slice length is exactly the sum
+	// of the four source slices, so growing the backing array via
+	// repeated append() would trigger avoidable reallocations.
+	rules := make([]PathRule, 0, len(p.Reject)+len(p.ConfirmDouble)+len(p.Confirm)+len(p.Warn))
 	for _, path := range p.Reject {
 		rules = append(rules, PathRule{Path: ExpandHome(path), Level: LevelReject})
 	}

@@ -127,6 +127,10 @@ const (
 	GuardBypassFlag = "--bypass"
 
 	// GuardBypassLogMsg is the log message template for bypass operations.
+	//
+	// #nosec G101 -- gosec flags "bypass" as a credential-looking
+	// keyword. This is a user-facing message template, not a secret;
+	// the "%s" holds an agent identifier (host/platform/agent/task).
 	GuardBypassLogMsg = "bypassed by %s via --bypass"
 
 	// GuardBypassInvalid is shown when --bypass identifier does not match the required format.

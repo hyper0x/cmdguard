@@ -17,6 +17,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os/exec"
 	"strings"
 	"testing"
@@ -40,7 +41,8 @@ func runFlag(t *testing.T, args ...string) (stdout, stderr string, exitCode int)
 	var so, se bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &so, &se
 	err := cmd.Run()
-	if ee, ok := err.(*exec.ExitError); ok {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
 		exitCode = ee.ExitCode()
 	}
 	return so.String(), se.String(), exitCode

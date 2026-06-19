@@ -2,6 +2,7 @@ package subcmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -123,6 +124,11 @@ func RunGuard(cmdName string, args []string) {
 				fmt.Printf("cmdguard %s\n\n", Version)
 			}
 			if realCmd, err := findRealCommand(cmdName); err == nil {
+				// #nosec G204 -- realCmd is the discovered absolute
+				// path of the user's real rm/mv/chmod binary, found
+				// by walking PATH and skipping cmdguard wrappers.
+				// Launching it with a fixed --version literal is the
+				// whole point of this passthrough.
 				if output, err := exec.Command(realCmd, "--version").Output(); err == nil {
 					// Best-effort relay of the underlying tool's
 					// --version banner. We're about to os.Exit(0),
@@ -137,6 +143,9 @@ func RunGuard(cmdName string, args []string) {
 			fmt.Print(msg.GuardHelp(cmdName))
 			fmt.Println()
 			if realCmd, err := findRealCommand(cmdName); err == nil {
+				// #nosec G204 -- same as --version above: realCmd is
+				// trusted (PATH-resolved system binary) and the only
+				// other arg is the literal --help flag.
 				if output, err := exec.Command(realCmd, "--help").Output(); err == nil {
 					// Same rationale as --version above: best-effort
 					// pass-through right before os.Exit.
@@ -481,12 +490,23 @@ func execOriginal(cmdName string, args []string, verbose bool) {
 		fmt.Printf(msg.GuardExecuting+"\n", realCmd, strings.Join(args, " "))
 	}
 
+	// #nosec G204 -- cmdguard's whole purpose is to wrap user-invoked
+	// rm/mv/chmod and forward arguments. realCmd is a PATH-resolved
+	// absolute path; args are the same arguments the user typed,
+	// already filtered by the caller (e.g. --bypass / --dry-run
+	// stripped). Treating this call as a security violation would
+	// disable the tool.
 	c := exec.Command(realCmd, args...)
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 
 	if err := c.Run(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		// errors.As traverses wrapped errors; the previous
+		// `err.(*exec.ExitError)` type assertion would silently
+		// fall through if Cmd ever started returning a wrapped
+		// error (errorlint).
+		if errors.As(err, &exitErr) {
 			os.Exit(exitErr.ExitCode())
 		}
 		os.Exit(1)
@@ -539,6 +559,10 @@ func findRealCommand(name string) (string, error) {
 			continue
 		}
 
+		// #nosec G703 -- fullPath is filepath.Join(dir, name) where
+		// dir comes from $PATH and name is the guarded command
+		// (rm/mv/chmod). Stat'ing them is exactly what `which` does
+		// — this is PATH lookup, not file inclusion.
 		info, err := os.Stat(fullPath)
 		if err != nil {
 			continue
@@ -573,6 +597,10 @@ func findRealCommand(name string) (string, error) {
 // has already stat'd the file, so a transient read failure is treated
 // as "not a wrapper" rather than aborting the PATH walk.
 func isCmdguardWrapper(path string) bool {
+	// #nosec G304 G703 -- path comes from the PATH walk in
+	// findRealCommand; we are only reading the first line to check
+	// for our sentinel. No user-controlled path content can escape
+	// the PATH directory traversal.
 	f, err := os.Open(path)
 	if err != nil {
 		return false

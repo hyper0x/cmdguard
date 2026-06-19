@@ -57,7 +57,13 @@ type Vault struct {
 // New creates a new Vault instance
 func New(cfg *config.VaultConfig) (*Vault, error) {
 	dir := filepath.Join(config.ConfigDir(), "vault")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	// 0700: vault holds copies of files the user just deleted. Many
+	// of those originals (~/.ssh/*, /etc/shadow, etc.) were 0600 or
+	// stricter; the backup must not be world-readable. Restricting
+	// the top-level directory means even if a backup file slips
+	// through with permissive mode, no other principal can list or
+	// stat its way to it.
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create vault directory: %w", err)
 	}
 	return &Vault{dir: dir, cfg: cfg}, nil
@@ -82,7 +88,11 @@ func (v *Vault) BackupDir(id string) string {
 // with default 0644 would silently weaken its security posture
 // (sshd refuses keys with permissive modes).
 func (v *Vault) SaveFile(backupDir, srcPath string) (string, error) {
-	if err := os.MkdirAll(backupDir, 0755); err != nil {
+	// 0700 on per-backup directory: same rationale as the vault root
+	// — only the owner needs to traverse this. The directory mode
+	// does not need to relax for files inside (they keep their
+	// original mode via info.Mode().Perm() below).
+	if err := os.MkdirAll(backupDir, 0700); err != nil {
 		return "", fmt.Errorf("failed to create backup directory: %w", err)
 	}
 
@@ -97,7 +107,9 @@ func (v *Vault) SaveFile(backupDir, srcPath string) (string, error) {
 
 	stored := storedPathFor(absSrc)
 	destPath := filepath.Join(backupDir, "files", stored)
-	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+	// 0700 again: parent dirs of files/etc/foo.conf must not leak
+	// the names of backed-up files via directory listing.
+	if err := os.MkdirAll(filepath.Dir(destPath), 0700); err != nil {
 		return "", fmt.Errorf("failed to create files directory: %w", err)
 	}
 
@@ -106,11 +118,21 @@ func (v *Vault) SaveFile(backupDir, srcPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to stat source file: %w", err)
 	}
+	// #nosec G304 G703 -- srcPath is the file the user is about to
+	// destroy via rm/mv/chmod; the whole point of the vault is to
+	// read its contents before destruction. Refusing variable paths
+	// would defeat the tool. Path-traversal isn't a concern: srcPath
+	// originates from argv, which the user has both intent and the
+	// fs permission to access.
 	data, err := os.ReadFile(srcPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read source file: %w", err)
 	}
 
+	// #nosec G703 -- destPath is computed by joining the vault root
+	// with storedPathFor(absSrc); cmdguard controls both halves of
+	// that path and the resulting write target stays inside the
+	// vault by construction. Same trust model as the ReadFile above.
 	if err := os.WriteFile(destPath, data, info.Mode().Perm()); err != nil {
 		return "", fmt.Errorf("failed to write backup file: %w", err)
 	}
@@ -168,11 +190,20 @@ func (v *Vault) RestoreFile(backupDir, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to stat backup file: %w", err)
 	}
+	// #nosec G304 G703 -- restore path. srcPath is a vault-internal
+	// file under backupDir/files/<storedPathFor(...)>; destPath is
+	// the original absolute path we read from the manifest at
+	// backup time. Both come from cmdguard-controlled bookkeeping,
+	// not user argv at restore time, so taint analysis flagging
+	// "variable" here is a false positive.
 	data, err := os.ReadFile(srcPath)
 	if err != nil {
 		return fmt.Errorf("failed to read backup file: %w", err)
 	}
 
+	// #nosec G703 -- destPath is the OriginalPath recorded in the
+	// manifest at backup time; restoring to it is the entire point
+	// of `cmdguard undo`. Same trust model as ReadFile above.
 	if err := os.WriteFile(destPath, data, info.Mode().Perm()); err != nil {
 		return fmt.Errorf("failed to restore file: %w", err)
 	}
@@ -202,6 +233,9 @@ func storedPathFor(absSrc string) string {
 // "no manifest" as the legacy/basename layout).
 func (v *Vault) readManifest(backupDir string) (*Manifest, error) {
 	path := filepath.Join(backupDir, manifestFileName)
+	// #nosec G304 -- backupDir is the vault-controlled directory
+	// for this backup ID; we're reading the cmdguard-written
+	// manifest.json inside it. Not user-supplied path data.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -249,7 +283,12 @@ func (v *Vault) appendManifest(backupDir string, entry ManifestEntry) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(backupDir, manifestFileName), data, 0644)
+	// 0600: the manifest records every original absolute path that
+	// was backed up. Treat that index with the same privacy as the
+	// audit log — if a user deletes ~/.ssh/id_rsa, we don't want a
+	// world-readable manifest at $vault/$backup/manifest.json
+	// announcing that fact.
+	return os.WriteFile(filepath.Join(backupDir, manifestFileName), data, 0600)
 }
 
 // PurgeExpired removes backups older than retention_days
@@ -458,6 +497,8 @@ func (v *Vault) FindBackupDir(id string) string {
 // guessing from basenames.
 func listBackupFiles(backupDir string) []string {
 	manifestPath := filepath.Join(backupDir, manifestFileName)
+	// #nosec G304 -- manifestPath is constructed from the
+	// vault-controlled backupDir + a fixed filename, not user input.
 	if data, err := os.ReadFile(manifestPath); err == nil {
 		var m Manifest
 		if json.Unmarshal(data, &m) == nil && len(m.Files) > 0 {

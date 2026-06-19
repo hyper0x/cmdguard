@@ -39,7 +39,10 @@ type Log struct {
 // New creates a new Log instance
 func New() (*Log, error) {
 	dir := filepath.Join(config.ConfigDir(), "log")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	// 0700: the audit log is private to the user. Other principals
+	// on the host have no business reading the history of guarded
+	// commands or the bypass identifiers used by AI agents.
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf(msg.ErrLogDir, err)
 	}
 
@@ -66,6 +69,9 @@ func (l *Log) logFilePath() string {
 // load reads log entries from today's log file
 func (l *Log) load() error {
 	path := l.logFilePath()
+	// #nosec G304 -- path is derived from CMDGUARD_CONFIG_DIR (or
+	// the default ~/.cmdguard) plus today's date in YYYY-MM-DD form.
+	// No user-supplied component reaches the filesystem call.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -136,7 +142,7 @@ func (l *Log) Append(entry Entry) error {
 		return fmt.Errorf(msg.ErrLogSerialize, err)
 	}
 
-	f, err := os.OpenFile(l.logFilePath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(l.logFilePath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf(msg.ErrLogWrite, err)
 	}
@@ -271,6 +277,9 @@ func (l *Log) MarkExpired(ids []string) error {
 // rewrite rewrites today's log file with current in-memory entries
 func (l *Log) rewrite() error {
 	path := l.logFilePath()
+	// #nosec G304 -- same trust model as load(): path is fully
+	// computed from cmdguard's own config dir + date, not user
+	// argv.
 	f, err := os.Create(path)
 	if err != nil {
 		return err
