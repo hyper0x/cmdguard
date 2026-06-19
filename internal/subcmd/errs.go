@@ -14,6 +14,7 @@ package subcmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/hyper0x/cmdguard/internal/msg"
 )
@@ -41,4 +42,17 @@ func errPrint(format string, args ...interface{}) {
 // degraded conditions (backup failed, log load failed, etc.).
 func warn(format string, args ...interface{}) {
 	fmt.Fprintln(os.Stderr, msg.FmtWarn(format, args...))
+}
+
+// rejectUnknownArg is the shared "this subcommand doesn't accept
+// that token" path. It picks the right error message based on
+// whether the token looks like a flag (starts with "-") or a
+// positional argument, so users see "unknown flag --recnet" vs.
+// "unexpected argument foo" — the diagnostic actually matches what
+// they typed. Always exits 1 via errExit.
+func rejectUnknownArg(arg, subcommand string) {
+	if strings.HasPrefix(arg, "-") {
+		errExit(msg.ErrUnknownFlag, arg, subcommand)
+	}
+	errExit(msg.ErrUnexpectedArg, arg, subcommand)
 }

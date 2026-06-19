@@ -60,7 +60,17 @@ const (
 	// flags, which let typos (e.g. `--recnet 5`) fall through to
 	// defaults — sweep finding (P2-2). Keep the format short and
 	// uniform across subcommands.
+	//
+	// Use ErrUnknownFlag for tokens that start with "-"/"--" only.
+	// Bare positional garbage (e.g. `cmdguard init foo`) goes through
+	// ErrUnexpectedArg so the diagnostic matches what the user typed.
 	ErrUnknownFlag = "unknown flag %q for '%s' subcommand"
+
+	// ErrUnexpectedArg is shown when a subcommand receives a positional
+	// argument it does not accept (anything not starting with "-").
+	// Calling this an "unknown flag" was actively misleading because
+	// the offending token is not a flag at all.
+	ErrUnexpectedArg = "unexpected argument %q for '%s' subcommand"
 
 	// ErrFlagMissingValue is shown when a flag that requires a value
 	// is present but no value follows (e.g. `cmdguard list --since`

@@ -61,7 +61,7 @@ func runVaultClean(v *vault.Vault, args []string) {
 		case "--dry-run":
 			dryRun = true
 		default:
-			errExit(msg.ErrUnknownFlag, a, "vault clean")
+			rejectUnknownArg(a, "vault clean")
 		}
 	}
 
@@ -100,7 +100,7 @@ func runVaultList(v *vault.Vault, args []string) {
 		case "--json":
 			jsonOutput = true
 		default:
-			errExit(msg.ErrUnknownFlag, a, "vault list")
+			rejectUnknownArg(a, "vault list")
 		}
 	}
 

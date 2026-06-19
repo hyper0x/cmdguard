@@ -90,7 +90,7 @@ func RunInit(args []string) {
 		case "--dry-run":
 			dryRun = true
 		default:
-			errExit(msg.ErrUnknownFlag, a, "init")
+			rejectUnknownArg(a, "init")
 		}
 	}
 

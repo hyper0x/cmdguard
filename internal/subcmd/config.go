@@ -25,7 +25,7 @@ func RunConfig(args []string) {
 		case "--bin-dir":
 			showBinDir = true
 		default:
-			errExit(msg.ErrUnknownFlag, a, "config")
+			rejectUnknownArg(a, "config")
 		}
 	}
 
