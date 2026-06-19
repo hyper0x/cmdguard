@@ -1,16 +1,31 @@
 # golangci-lint configuration.
 #
-# We run golangci-lint v2 (`brew install golangci-lint` on macOS).
+# We run golangci-lint v2 (`brew install golangi-lint` on macOS).
 # v2 changed the schema: linters live under `linters.enable`, and
 # per-rule exclusions live under `linters.exclusions.rules`.
 #
 # Why this file exists:
-#   1. Pin the active linter set so `golangci-lint run` is reproducible
-#      across contributors and CI (no "default changed in v2.13").
+#   1. Pin the active linter set so `golangci-lint run` is
+#      reproducible across contributors and CI (no "default changed
+#      in v2.13"). `default: none` means ONLY the linters listed below
+#      run — nothing implicit.
 #   2. Suppress errcheck noise inside *_test.go where the standard
 #      pattern is os.Setenv / w.Close / buf.ReadFrom / os.MkdirAll
 #      without explicit error handling. Production code still gets
 #      the full check.
+#
+# Linter philosophy:
+#   - Real-bug catchers (errcheck, gosec, errorlint, nilerr, …) are
+#     ON at default thresholds. Every finding they surface is either a
+#     bug we fix or a documented false positive (`// #nosec`).
+#   - gocyclo is kept at a deliberately high threshold (70) because the
+#     three CLI dispatchers (RunGuard/RunInit/RunUndo) are inherently
+#     big switch-on-subcommand functions; the value is in preventing NEW
+#     complexity, not flagging what we already know about.
+#   - misspell / gocritic / unconvert / predeclared / forcetypeassert
+#     currently produce zero findings on this codebase, but we keep them
+#     enabled as a regression fence: the day someone adds a typo or an
+#     unnecessary conversion, CI catches it instead of a reviewer.
 #
 # Run:    golangci-lint run ./...
 # Update: golangci-lint config verify
@@ -19,20 +34,59 @@ version: "2"
 linters:
   default: none
   enable:
-    # Built-ins worth keeping on:
-    - errcheck     # unchecked error returns (catches the real bugs)
-    - govet        # the official go vet rules
-    - ineffassign  # assignments whose result is never read
-    - staticcheck  # SA-, ST-, QF- rules; the most valuable third-party set
-    - unused       # dead code (functions, vars, types)
+    # --- Built-ins that always pay off ---
+    - errcheck       # unchecked error returns (the most frequent real bug)
+    - govet          # the official `go vet` rules
+    - ineffassign    # assignments whose result is never read
+    - staticcheck    # SA-/ST-/QF- rules; the single most valuable set
+    - unused         # dead code (functions, vars, types, consts)
+
+    # --- Security & correctness ---
+    - gosec          # G1xx/G3xx/G7xx security checks (path traversal, hardcoded creds, …)
+    - errorlint      # use errors.As/Is/wrap instead of == / type-assertion
+    - nilerr           # detect `if err != nil { return nil }` patterns that drop errors
+
+    # --- Performance micro-optimisation ---
+    - prealloc        # preallocate slices when size is known upfront
+
+    # --- Style & polish (zero findings today, fence for tomorrow) ---
+    - misspell        # typos in comments/strings
+    - gocritic        # style/perf/bug-prone patterns
+    - unconvert       # unnecessary type conversions
+    - predeclared    # shadowing predeclared identifiers (e.g. `cap`, `len`)
+    - forcetypeassert # unchecked type assertions (panic risk)
+
+    # --- Complexity (high threshold — see comment above) ---
+    - gocyclo
+
+  settings:
+    gocyclo:
+      # The three CLI dispatchers (RunGuard=67, RunInit=38, RunUndo=57)
+      # are intentionally large switch-on-subcommand functions. We set
+      # the threshold above the worst case so the linter acts as a
+      # regression guard against NEW over-complex functions rather than
+      # nagging about the existing ones.
+      min-complexity: 70
+    gosec:
+      # #nosec directives already cover the genuine false positives
+      # (user-supplied command launching, PATH-walk file reads, …).
+      # No global exclusion rules — every suppression is per-site with
+      # a justification comment.
+      excludes: []
 
   exclusions:
     rules:
-      # Test files often deliberately ignore os.Setenv/Unsetenv,
-      # WriteFile, MkdirAll, w.Close on test pipes, etc. The bug
-      # surface is tiny and the diagnostic clutter from checking
-      # them all is large. Production code still goes through
-      # errcheck unchanged.
+      # Test files routinely ignore os.Setenv/Unsetenv, WriteFile,
+      # MkdirAll, w.Close on test pipes, etc. The bug surface in tests
+      # is tiny and the diagnostic clutter is large. Production code
+      # still goes through errcheck unchanged.
       - path: _test\.go
         linters:
           - errcheck
+          - gosec
+          - forcetypeassert
+          - prealloc
+      # gocyclo is meaningless in test table-drivers and helpers.
+      - path: _test\.go
+        linters:
+          - gocyclo
