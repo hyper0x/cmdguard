@@ -21,43 +21,70 @@ func RunList(args []string) {
 	q := log.Query{
 		Recent: 20, // default
 	}
+	jsonOutput := false
 
+	// Single-pass arg parser. Every branch consumes its own value
+	// (advancing i when needed); the default arm rejects anything we
+	// don't recognise. Earlier this loop silently dropped unknown
+	// flags, which let typos like `--recnet 5` fall through to the
+	// default Recent=20. Sweep finding (P2-2).
 	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--recent":
-			if i+1 < len(args) {
-				n, err := strconv.Atoi(args[i+1])
-				if err == nil && n > 0 {
-					q.Recent = n
-				}
-				i++
+		a := args[i]
+		switch {
+		case a == "--recent":
+			if i+1 >= len(args) {
+				errExit(msg.ErrFlagMissingValue, a)
 			}
-		case "--since":
-			if i+1 < len(args) {
-				d, err := parseDuration(args[i+1])
-				if err != nil {
-					// Reject malformed input loudly. Previously a typo like
-					// `--since 7days` silently parsed to zero, which the
-					// log query treats as "no time filter" — so the user
-					// got the full unfiltered log without any indication
-					// that their flag was ignored.
-					errExit(msg.ErrListSinceInvalid, args[i+1])
-				}
-				q.Since = d
-				i++
+			n, err := strconv.Atoi(args[i+1])
+			if err != nil || n <= 0 {
+				errExit(msg.ErrInvalidRecent, args[i+1])
 			}
-		case "--cmd":
-			if i+1 < len(args) {
-				q.Cmd = args[i+1]
-				i++
+			q.Recent = n
+			i++
+		case strings.HasPrefix(a, "--recent="):
+			val := strings.TrimPrefix(a, "--recent=")
+			n, err := strconv.Atoi(val)
+			if err != nil || n <= 0 {
+				errExit(msg.ErrInvalidRecent, val)
 			}
-		case "--path":
-			if i+1 < len(args) {
-				q.Path = args[i+1]
-				i++
+			q.Recent = n
+		case a == "--since":
+			if i+1 >= len(args) {
+				errExit(msg.ErrFlagMissingValue, a)
 			}
-		case "--json":
-			// handled below
+			d, err := parseDuration(args[i+1])
+			if err != nil {
+				errExit(msg.ErrListSinceInvalid, args[i+1])
+			}
+			q.Since = d
+			i++
+		case strings.HasPrefix(a, "--since="):
+			val := strings.TrimPrefix(a, "--since=")
+			d, err := parseDuration(val)
+			if err != nil {
+				errExit(msg.ErrListSinceInvalid, val)
+			}
+			q.Since = d
+		case a == "--cmd":
+			if i+1 >= len(args) {
+				errExit(msg.ErrFlagMissingValue, a)
+			}
+			q.Cmd = args[i+1]
+			i++
+		case strings.HasPrefix(a, "--cmd="):
+			q.Cmd = strings.TrimPrefix(a, "--cmd=")
+		case a == "--path":
+			if i+1 >= len(args) {
+				errExit(msg.ErrFlagMissingValue, a)
+			}
+			q.Path = args[i+1]
+			i++
+		case strings.HasPrefix(a, "--path="):
+			q.Path = strings.TrimPrefix(a, "--path=")
+		case a == "--json":
+			jsonOutput = true
+		default:
+			errExit(msg.ErrUnknownFlag, a, "list")
 		}
 	}
 
@@ -66,14 +93,6 @@ func RunList(args []string) {
 	if len(entries) == 0 {
 		fmt.Println(msg.ListNoResults)
 		return
-	}
-
-	jsonOutput := false
-	for _, arg := range args {
-		if arg == "--json" {
-			jsonOutput = true
-			break
-		}
 	}
 
 	if jsonOutput {
