@@ -1,11 +1,16 @@
 # Changelog
 
-## v0.7.0 (2026-06-19)
+## v0.12.0 (2026-06-19)
+
+Big jump from v0.6.0 to mark the work density: four new features
+(each one number) plus two rounds of bug-fix sweeps (each one
+number) — `0.6 + 4 + 2 = 0.12`. There's no v0.7..v0.11 between
+this and v0.6.0; that version space stays reserved.
 
 A reliability and correctness release. No new user-facing features
-beyond two convenience subcommands; the bulk of the work is fixing
-subtle bugs and tightening invariants found during a five-round
-release sweep.
+beyond two convenience subcommands and a few config-view flags; the
+bulk of the work is fixing subtle bugs and tightening invariants
+found during a five-round release sweep.
 
 ### New subcommands
 
@@ -129,14 +134,26 @@ no-read-permission, and not-a-regular-file cases.
   `invalid --since value "7days" (use formats like 30m, 2h, 7d)`.
   Previously it parsed to zero and silently returned the entire
   unfiltered log.
-- **Unknown flags rejected.** `list`, `config`, `init`, `path`,
-  `vault clean`, and `vault list` now exit 1 with
-  `unknown flag "..."` on any unrecognised argument. Catches
-  typos like `--recnet 5` (intended `--recent 5`) that previously
-  silently fell through to defaults. The guarded commands
-  (`rm`/`mv`/`chmod`) deliberately keep their permissive
-  passthrough — they need to forward `-rf`, `-R`, etc. to the
-  real binary.
+- **Unknown flags and unexpected arguments rejected.** `list`,
+  `undo`, `config`, `init`, `path`, `vault clean`, and `vault list`
+  now exit 1 on any unrecognised token. The diagnostic distinguishes
+  the two cases:
+  - `unknown flag "--recnet" for 'list' subcommand` — catches typos
+    like `--recnet 5` (intended `--recent 5`) that previously
+    silently fell through to defaults.
+  - `unexpected argument "foo" for 'init' subcommand` — for bare
+    positional garbage that isn't a flag at all.
+  `--recent` / `--id` and friends also now require a value: missing
+  values, non-integer or non-positive `--recent`, etc., all error
+  out instead of silently using a default.
+
+  The guarded commands (`rm`/`mv`/`chmod`) deliberately keep their
+  permissive passthrough — they need to forward `-rf`, `-R`, etc.
+  to the real binary.
+
+  Regression coverage: `e2e_flags_test.go` runs the full rejection
+  table (23 cases) plus `--*=value` equals-form acceptance against
+  the real binary in a subprocess.
 - **`cmdguard vault` without a subcommand** now prints a usage
   block and exits 1, instead of running `clean`. A destructive
   verb shouldn't be the silent default.
