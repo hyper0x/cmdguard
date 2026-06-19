@@ -12,7 +12,7 @@ import (
 	"github.com/hyper0x/cmdguard/internal/msg"
 )
 
-// RunPath handles the "path" command
+// RunPath handles the "path" command.
 func RunPath(args []string) {
 	// path takes no flags or positional args. Reject anything to keep
 	// the contract honest — silent acceptance of garbage hides typos
@@ -106,11 +106,8 @@ func printDirFiles(dir string, extFilter string) {
 	})
 
 	// Show up to 5 files
-	showCount := len(files)
-	if showCount > 5 {
-		showCount = 5
-	}
-	for i := 0; i < showCount; i++ {
+	showCount := min(len(files), 5)
+	for i := range showCount {
 		prefix := "├─ "
 		if i == showCount-1 {
 			prefix = "└─ "
@@ -127,7 +124,7 @@ func printDirFiles(dir string, extFilter string) {
 	fmt.Printf("  (%s)\n", summary)
 }
 
-// printVaultInfo shows vault summary: backup count and disk usage
+// printVaultInfo shows vault summary: backup count and disk usage.
 func printVaultInfo(dir string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -183,7 +180,7 @@ func printVaultInfo(dir string) {
 	fmt.Printf("  (%s)\n", fmt.Sprintf(msg.PathVaultSummary, len(backupDirs), formatFileSize(totalSize)))
 }
 
-// formatFileSize returns a human-readable file size
+// formatFileSize returns a human-readable file size.
 func formatFileSize(bytes int64) string {
 	const unit = 1024
 	if bytes < unit {

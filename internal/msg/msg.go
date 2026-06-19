@@ -45,16 +45,16 @@ var LevelActions = map[string]string{
 }
 
 // Fmt returns a formatted [cmdguard] message.
-func Fmt(format string, args ...interface{}) string {
+func Fmt(format string, args ...any) string {
 	return fmt.Sprintf(TagCmdguard+" "+format, args...)
 }
 
 // FmtErr returns a formatted [cmdguard] error message.
-func FmtErr(format string, args ...interface{}) string {
+func FmtErr(format string, args ...any) string {
 	return fmt.Sprintf(TagCmdguard+" error: "+format, args...)
 }
 
 // FmtWarn returns a formatted [cmdguard] warning message.
-func FmtWarn(format string, args ...interface{}) string {
+func FmtWarn(format string, args ...any) string {
 	return fmt.Sprintf(TagCmdguard+" warning: "+format, args...)
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/hyper0x/cmdguard/internal/msg"
 )
 
-// Result represents the outcome of a guard check
+// Result represents the outcome of a guard check.
 type Result struct {
 	Action  string   // "reject", "confirm_double", "confirm", "warn", "allow"
 	Rule    string   // the matched rule path
@@ -18,7 +18,7 @@ type Result struct {
 	Message string
 }
 
-// Check evaluates whether the given targets are protected
+// Check evaluates whether the given targets are protected.
 func Check(cfg *config.Config, cmd string, targets []string) *Result {
 	rules := cfg.GetProtectRules(cmd)
 
@@ -47,8 +47,8 @@ func Check(cfg *config.Config, cmd string, targets []string) *Result {
 	}
 }
 
-// matchPath checks if a path matches a glob-like pattern
-// Supports ** (any depth), * (within a single component)
+// matchPath checks if a path matches a glob-like pattern.
+// Supports ** (any depth), * (within a single component).
 func matchPath(path, pattern string) bool {
 	// Clean paths
 	path = filepath.Clean(path)
@@ -61,8 +61,7 @@ func matchPath(path, pattern string) bool {
 	// make `**.key` match `file.keystore` (because ".key" is a substring
 	// of ".keystore"), which is a security false-positive — protected
 	// files would block unrelated paths.
-	if strings.HasPrefix(pattern, "**") {
-		suffix := strings.TrimPrefix(pattern, "**")
+	if suffix, ok := strings.CutPrefix(pattern, "**"); ok {
 		if suffix == "" {
 			return true
 		}
@@ -73,8 +72,7 @@ func matchPath(path, pattern string) bool {
 	// inside `prefix/`. The trailing `/` boundary is REQUIRED to prevent
 	// `/etc/**` from matching `/etcd/foo` (different directory whose name
 	// merely starts with the prefix).
-	if strings.HasSuffix(pattern, "**") {
-		prefix := strings.TrimSuffix(pattern, "/**")
+	if prefix, ok := strings.CutSuffix(pattern, "/**"); ok {
 		return path == prefix || strings.HasPrefix(path, prefix+"/")
 	}
 
@@ -132,7 +130,7 @@ func matchGlob(path, pattern string) bool {
 	return true
 }
 
-// ExtractTargets extracts file/directory paths from command arguments
+// ExtractTargets extracts file/directory paths from command arguments.
 func ExtractTargets(cmd string, args []string) []string {
 	var targets []string
 	skippedMode := false
@@ -160,8 +158,8 @@ func ExtractTargets(cmd string, args []string) []string {
 	return targets
 }
 
-// ExtractAllTargets extracts ALL file/directory paths from command arguments
-// (unlike ExtractTargets which for mv only returns the destination)
+// ExtractAllTargets extracts ALL file/directory paths from command arguments.
+// (Unlike ExtractTargets, for mv it returns both source and destination.)
 func ExtractAllTargets(args []string) []string {
 	var targets []string
 	for _, arg := range args {
@@ -173,7 +171,7 @@ func ExtractAllTargets(args []string) []string {
 	return targets
 }
 
-// PrintWarning prints a warning message for protected paths
+// PrintWarning prints a warning message for protected paths.
 func PrintWarning(cmd string, result *Result) {
 	icon := msg.LevelIcons[msg.LevelReject]
 	level := msg.LevelLabels[msg.LevelReject]

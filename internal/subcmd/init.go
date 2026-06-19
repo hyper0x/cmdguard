@@ -12,7 +12,7 @@ import (
 	"github.com/hyper0x/cmdguard/internal/msg"
 )
 
-// backupFiles creates a zip archive of all files to be overwritten
+// backupFiles creates a zip archive of all files to be overwritten.
 func backupFiles(files []string) (string, error) {
 	backupDir := filepath.Join(config.ConfigDir(), "backup")
 	// 0700: this directory holds zip archives of the user's previous
@@ -113,7 +113,7 @@ func backupFiles(files []string) (string, error) {
 	return zipPath, nil
 }
 
-// RunInit handles the "init" command
+// RunInit handles the "init" command.
 func RunInit(args []string) {
 	force := false
 	dryRun := false

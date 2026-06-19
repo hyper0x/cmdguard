@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/hyper0x/cmdguard/internal/log"
@@ -13,7 +14,7 @@ import (
 	"github.com/hyper0x/cmdguard/internal/vault"
 )
 
-// RunUndo handles the "undo" command
+// RunUndo handles the "undo" command.
 func RunUndo(args []string) {
 	dryRun := false
 	interactive := false
@@ -140,7 +141,7 @@ func RunUndo(args []string) {
 		}
 
 		for i, e := range displayed {
-			if fmt.Sprintf("%d", i+1) == input {
+			if strconv.Itoa(i+1) == input {
 				id = e.ID
 				break
 			}
@@ -155,12 +156,9 @@ func RunUndo(args []string) {
 	// Find the log entry
 	entry := logger.FindByID(id)
 	if entry == nil {
-		// Failure path → stderr + exit 1. Earlier this went to stdout,
-		// which broke `cmd 2>/dev/null` pipelines that try to silence
-		// errors. Sweep finding (P3-1). Same below for Expired,
-		// Rejected, BackupNotFound.
 		fmt.Fprintf(os.Stderr, msg.UndoIDNotFound+"\n", id)
 		os.Exit(1)
+		return // unreachable; appeases staticcheck SA5011
 	}
 
 	if entry.Expired {
@@ -272,7 +270,7 @@ func RunUndo(args []string) {
 		Command: entry.Command,
 		Action:  msg.LevelUndo,
 		Targets: entry.Targets,
-		Message: fmt.Sprintf("undo of %s", entry.ID),
+		Message: "undo of " + entry.ID,
 	}
 	if logger, err := log.New(); err == nil {
 		if err := logger.Append(logEntry); err != nil {

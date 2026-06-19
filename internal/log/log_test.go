@@ -75,7 +75,7 @@ func TestAppend_PreservesBypassField(t *testing.T) {
 		t.Errorf("bypass field missing from disk: %s", raw)
 	}
 	// Verify each line is valid JSON
-	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(raw)), "\n") {
 		if line == "" {
 			continue
 		}
@@ -137,7 +137,7 @@ func TestSearch_NewestFirst(t *testing.T) {
 
 func TestSearch_RecentLimit(t *testing.T) {
 	l, _ := setupTestLog(t)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_ = l.Append(Entry{Command: "rm", Targets: "/tmp/x"})
 	}
 	got := l.Search(Query{Recent: 3})
@@ -243,7 +243,7 @@ this-is-not-json
 func TestNewID_NoCollision(t *testing.T) {
 	const N = 10000
 	seen := make(map[string]struct{}, N)
-	for i := 0; i < N; i++ {
+	for i := range N {
 		id := NewID()
 		if len(id) != 12 {
 			t.Fatalf("NewID() = %q, want 12 hex chars", id)
@@ -257,7 +257,7 @@ func TestNewID_NoCollision(t *testing.T) {
 
 // TestNewID_HexFormat checks NewID produces only [0-9a-f].
 func TestNewID_HexFormat(t *testing.T) {
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		id := NewID()
 		for _, c := range id {
 			// De Morgan'd from the original `!((digit) || (lowhex))`

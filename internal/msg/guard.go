@@ -1,6 +1,9 @@
 package msg
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ─── Guard entry point ──────────────────────────────────────────────
 
@@ -113,7 +116,7 @@ const (
  The <identifier> MUST be a 4-segment path:
    host      hostname or machine alias  (e.g. mac-studio)
    platform  agent platform             (e.g. qwenpaw, claude-code, cursor)
-   agent     agent id                   (e.g. ai_research, coding)
+   agent     unique identifier         (e.g. ai_research, coding)
    task      brief task slug            (e.g. cleanup-tmp-dirs)
 
  Allowed characters per segment: [a-zA-Z0-9._-], no empty segments.
@@ -139,7 +142,7 @@ const (
  The <identifier> MUST be a 4-segment path:
    host      hostname or machine alias  (e.g. mac-studio)
    platform  agent platform             (e.g. qwenpaw, claude-code, cursor)
-   agent     agent id                   (e.g. ai_research, coding)
+   agent     unique identifier         (e.g. ai_research, coding)
    task      brief task slug            (e.g. cleanup-tmp-dirs)
 
  Format rules:
@@ -169,13 +172,14 @@ const (
 
 // GuardWarningFmt returns the formatted warning block.
 func GuardWarningFmt(cmd string, icon, level, rule, msg string, targets []string) string {
-	out := fmt.Sprintf("\n%s [cmdguard] %s: %s\n", icon, level, msg)
-	out += fmt.Sprintf("  Command: %s\n", cmd)
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n%s [cmdguard] %s: %s\n", icon, level, msg)
+	fmt.Fprintf(&b, "  Command: %s\n", cmd)
 	for _, t := range targets {
-		out += fmt.Sprintf("  Path: %s\n", t)
+		fmt.Fprintf(&b, "  Path: %s\n", t)
 	}
-	out += fmt.Sprintf("  Rule: %s\n", rule)
-	return out
+	fmt.Fprintf(&b, "  Rule: %s\n", rule)
+	return b.String()
 }
 
 // ─── Verbose mode ───────────────────────────────────────────────────

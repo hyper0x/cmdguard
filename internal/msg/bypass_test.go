@@ -128,7 +128,7 @@ func FuzzValidateBypass(f *testing.F) {
 		}
 		// No segment may equal a placeholder token (case-insensitive).
 		lower := strings.ToLower(id)
-		for _, seg := range strings.Split(lower, "/") {
+		for seg := range strings.SplitSeq(lower, "/") {
 			for _, tok := range placeholderTokens {
 				if seg == tok {
 					t.Errorf("approved id %q has placeholder segment %q", id, tok)

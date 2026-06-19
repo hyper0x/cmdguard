@@ -101,7 +101,7 @@ func appendLog(entry log.Entry) {
 	}
 }
 
-// RunGuard handles rm/mv/chmod commands
+// RunGuard handles rm/mv/chmod commands.
 func RunGuard(cmdName string, args []string) {
 	dryRun := false
 	verbose := false
@@ -479,7 +479,7 @@ func RunGuard(cmdName string, args []string) {
 	}
 }
 
-// execOriginal executes the original system command
+// execOriginal executes the original system command.
 func execOriginal(cmdName string, args []string, verbose bool) {
 	realCmd, err := findRealCommand(cmdName)
 	if err != nil {
@@ -621,7 +621,7 @@ func isCmdguardWrapper(path string) bool {
 	return strings.Contains(string(buf[:n]), WrapperSentinelPrefix)
 }
 
-// isTerminal checks whether stdin is a terminal (TTY)
+// isTerminal checks whether stdin is a terminal (TTY).
 func isTerminal() bool {
 	stat, _ := os.Stdin.Stat()
 	return (stat.Mode() & os.ModeCharDevice) != 0
@@ -664,12 +664,16 @@ func readLineWithTimeout(seconds int) (string, bool) {
 // nonTTYReason identifies why cmdguard fell into the non-interactive
 // rejection path. It controls only the log message — the user-facing
 // guidance is the same in all cases.
+//
+// Note: timeout is NOT here. The interactive-prompt-timeout path has
+// its own dedicated function (emitNonTTYRejectionTimeout) because it
+// needs to record the actual seconds value in the log. Only the two
+// "pre-existing non-interactive" conditions use this type.
 type nonTTYReason int
 
 const (
-	reasonNonTTY  nonTTYReason = iota // stdin is not a TTY (or unspecified)
-	reasonEnv                         // CMDGUARD_NONINTERACTIVE is set
-	reasonTimeout                     // interactive prompt timed out
+	reasonNonTTY nonTTYReason = iota // stdin is not a TTY (or unspecified)
+	reasonEnv                        // CMDGUARD_NONINTERACTIVE is set
 )
 
 // emitNonTTYRejection prints the standard non-interactive rejection
