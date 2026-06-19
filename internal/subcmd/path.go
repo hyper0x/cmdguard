@@ -14,6 +14,13 @@ import (
 
 // RunPath handles the "path" command
 func RunPath(args []string) {
+	// path takes no flags or positional args. Reject anything to keep
+	// the contract honest — silent acceptance of garbage hides typos
+	// such as `cmdguard path --raw` (user thought of `config --raw`).
+	if len(args) > 0 {
+		errExit(msg.ErrUnknownFlag, args[0], "path")
+	}
+
 	cfgDir := config.ConfigDir()
 	cfgPath := config.ConfigPath()
 

@@ -54,6 +54,21 @@ const (
 	// Examples of malformed input: "7days", "tomorrow", "" (empty).
 	// Examples of accepted input: "30m", "2h", "7d".
 	ErrListSinceInvalid = "invalid --since value %q (use formats like 30m, 2h, 7d)"
+
+	// ErrUnknownFlag is the canonical message for an unrecognised flag
+	// in any subcommand. Earlier behaviour silently dropped unknown
+	// flags, which let typos (e.g. `--recnet 5`) fall through to
+	// defaults — sweep finding (P2-2). Keep the format short and
+	// uniform across subcommands.
+	ErrUnknownFlag = "unknown flag %q for '%s' subcommand"
+
+	// ErrFlagMissingValue is shown when a flag that requires a value
+	// is present but no value follows (e.g. `cmdguard list --since`
+	// with nothing after it).
+	ErrFlagMissingValue = "flag %q requires a value"
+
+	// ErrInvalidRecent is shown when --recent gets a non-positive int.
+	ErrInvalidRecent = "invalid --recent value %q (must be a positive integer)"
 )
 
 // ─── List command output ────────────────────────────────────────────
@@ -152,6 +167,19 @@ const (
 
 	// VaultListStatusExpired is the status tag for expired backups.
 	VaultListStatusExpired = "expired"
+
+	// VaultUsage is shown when 'vault' is invoked without a subcommand
+	// or with an unknown one. We require an explicit subcommand rather
+	// than defaulting silently because past behaviour (default = clean)
+	// runs a destructive op on bare `cmdguard vault`, which is a sharp
+	// edge users discover the wrong way.
+	VaultUsage = TagCmdguard + ` usage: cmdguard vault <subcommand>
+
+Subcommands:
+  clean [--dry-run]  Purge expired backups
+  list  [--json]     List all backups
+
+Run 'cmdguard --help' for the top-level command list.`
 )
 
 // ─── Path command output ────────────────────────────────────────────

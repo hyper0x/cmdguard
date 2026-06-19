@@ -10,7 +10,9 @@ import (
 
 // RunConfig handles the "config" command
 func RunConfig(args []string) {
-	// Parse flags
+	// Parse flags. Each branch is explicit; unknown flags are rejected
+	// with errExit so typos like `--recnet` don't silently fall through
+	// to the default `effective` view. Sweep finding (P2-2).
 	showDefault := false
 	showRaw := false
 	showBinDir := false
@@ -22,6 +24,8 @@ func RunConfig(args []string) {
 			showRaw = true
 		case "--bin-dir":
 			showBinDir = true
+		default:
+			errExit(msg.ErrUnknownFlag, a, "config")
 		}
 	}
 

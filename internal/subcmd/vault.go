@@ -3,6 +3,7 @@ package subcmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -13,6 +14,21 @@ import (
 
 // RunVault handles the "vault" command
 func RunVault(args []string) {
+	// Require an explicit subcommand. Earlier this defaulted to
+	// "clean", which meant `cmdguard vault` (no args) silently ran a
+	// destructive operation. Even though clean is currently a no-op
+	// when nothing is expired, the contract should not bury a delete
+	// behind a bare verb. Sweep finding (P2-1).
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, msg.VaultUsage)
+		os.Exit(1)
+	}
+	if strings.HasPrefix(args[0], "-") {
+		// e.g. `cmdguard vault --dry-run`. Refuse rather than guess
+		// which subcommand the flag belongs to.
+		errExit("vault subcommand required (got flag %q)", args[0])
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		errExit(msg.ErrConfigLoad, err)
@@ -23,15 +39,8 @@ func RunVault(args []string) {
 		errExit(msg.ErrVaultNew, err)
 	}
 
-	// Dispatch on subcommand. Each branch parses its own flags so flag
-	// scoping is explicit (e.g. --json belongs to `list`, not `clean`)
-	// and unknown flags can be reported per-subcommand if needed later.
-	sub := "clean"
-	subArgs := args
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		sub = args[0]
-		subArgs = args[1:]
-	}
+	sub := args[0]
+	subArgs := args[1:]
 
 	switch sub {
 	case "clean":
@@ -39,6 +48,7 @@ func RunVault(args []string) {
 	case "list":
 		runVaultList(v, subArgs)
 	default:
+		fmt.Fprintln(os.Stderr, msg.VaultUsage)
 		errExit("unknown vault subcommand: %s", sub)
 	}
 }
@@ -47,8 +57,11 @@ func RunVault(args []string) {
 func runVaultClean(v *vault.Vault, args []string) {
 	dryRun := false
 	for _, a := range args {
-		if a == "--dry-run" {
+		switch a {
+		case "--dry-run":
 			dryRun = true
+		default:
+			errExit(msg.ErrUnknownFlag, a, "vault clean")
 		}
 	}
 
@@ -83,8 +96,11 @@ func runVaultClean(v *vault.Vault, args []string) {
 func runVaultList(v *vault.Vault, args []string) {
 	jsonOutput := false
 	for _, a := range args {
-		if a == "--json" {
+		switch a {
+		case "--json":
 			jsonOutput = true
+		default:
+			errExit(msg.ErrUnknownFlag, a, "vault list")
 		}
 	}
 
