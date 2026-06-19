@@ -158,6 +158,23 @@ cmdguard list --json | cmdguard undo   # 管道模式
 
 ---
 
+## `cmdguard vault list [--json]`
+
+列出 vault 中所有备份。
+
+| 选项 | 说明 |
+|:----|:----|
+| `--json` | 输出 JSON 数组（便于脚本处理） |
+
+```bash
+cmdguard vault list
+cmdguard vault list --json
+```
+
+默认文本输出包含 ID、命令、创建时间、过期时间和原始目标路径。按时间倒序。
+
+---
+
 ## `cmdguard vault clean [--dry-run]`
 
 清理过期 vault 备份。
@@ -171,15 +188,47 @@ cmdguard vault clean              # 清理过期备份
 cmdguard vault clean --dry-run    # 预览
 ```
 
+直接执行 `cmdguard vault`（不带子命令）会打印用法并以 exit 1 退出 ——
+`clean` 属于破坏性操作，不应被静默作为默认行为。
+
 ---
 
-## `cmdguard config`
+## `cmdguard config [--default | --raw | --bin-dir]`
 
-查看当前配置（含 `[protect]`、`[vault]`、`[guard]` 三段）。
+查看不同视角的配置。这三个选项互斥。
+
+| 选项 | 说明 |
+|:----|:----|
+| _(无)_ | 合并后的有效配置（默认值 + 用户覆盖） |
+| `--default` | 仅展示内置默认配置 |
+| `--raw` | 展示磁盘上 `config.toml` 的原始内容 |
+| `--bin-dir` | 仅打印 wrapper 脚本目录的路径 |
 
 ```bash
-cmdguard config
+cmdguard config              # 实际生效的配置
+cmdguard config --default    # 假设没有 config.toml 时的样子
+cmdguard config --raw        # 磁盘上配置文件的原文
+cmdguard config --bin-dir    # /home/alice/.cmdguard/bin
 ```
+
+`--bin-dir` 主要用于 shell 拼接：
+
+```bash
+export PATH="$(cmdguard config --bin-dir):$PATH"
+```
+
+---
+
+## `cmdguard path`
+
+展示 cmdguard 的目录结构 —— 配置文件、日志目录、vault 目录、bin 目录，
+并附带文件数量和大小。
+
+```bash
+cmdguard path
+```
+
+日志部分最多展示最新 5 个文件，避免长期运行后输出过长，并在末尾给出总文件数。
 
 ---
 

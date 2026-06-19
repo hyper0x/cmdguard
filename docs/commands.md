@@ -165,6 +165,24 @@ cmdguard list --json | cmdguard undo   # pipeline
 
 ---
 
+## `cmdguard vault list [--json]`
+
+List all backups currently stored in the vault.
+
+| Flag | Description |
+|:----|:----|
+| `--json` | Emit a JSON array (machine-readable) |
+
+```bash
+cmdguard vault list
+cmdguard vault list --json
+```
+
+The default text output shows ID, command, creation time, expiration,
+and the original target path. Sorted newest first.
+
+---
+
 ## `cmdguard vault clean [--dry-run]`
 
 Purge expired vault backups.
@@ -178,15 +196,50 @@ cmdguard vault clean              # purge
 cmdguard vault clean --dry-run    # preview
 ```
 
+Bare `cmdguard vault` (no subcommand) prints a usage block and
+exits 1 — `clean` is destructive enough that it should never be the
+silent default.
+
 ---
 
-## `cmdguard config`
+## `cmdguard config [--default | --raw | --bin-dir]`
 
-Print the active configuration (`[protect]`, `[vault]`, `[guard]` sections).
+Print configuration views. The flags are mutually exclusive.
+
+| Flag | Description |
+|:----|:----|
+| _(none)_ | Effective merged config (defaults + your overrides) |
+| `--default` | Built-in defaults verbatim |
+| `--raw` | Raw `config.toml` contents from disk |
+| `--bin-dir` | Bare path to the wrapper-script directory |
 
 ```bash
-cmdguard config
+cmdguard config              # what's actually being used
+cmdguard config --default    # what you'd get with no config.toml
+cmdguard config --raw        # what's literally on disk
+cmdguard config --bin-dir    # /home/alice/.cmdguard/bin
 ```
+
+`--bin-dir` is designed for shell composition:
+
+```bash
+export PATH="$(cmdguard config --bin-dir):$PATH"
+```
+
+---
+
+## `cmdguard path`
+
+Print cmdguard's directory layout — config file, log dir, vault
+dir, bin dir — with file counts and sizes.
+
+```bash
+cmdguard path
+```
+
+The log section caps display at the 5 newest files to keep output
+bounded on long-running installs. A summary line shows the total
+file count.
 
 ---
 
