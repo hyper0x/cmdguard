@@ -35,6 +35,7 @@ func RunPath(args []string) {
 	if fi, err := os.Stat(cfgPath); err == nil {
 		// Count lines
 		lineCount := 0
+		// #nosec G304 -- cfgPath is config.ConfigPath(); controlled.
 		if data, err := os.ReadFile(cfgPath); err == nil {
 			lineCount = bytes.Count(data, []byte{'\n'})
 		}
@@ -150,7 +151,21 @@ func printVaultInfo(dir string) {
 		// ReadDir would miss most of the bytes.
 		filesDir := filepath.Join(dir, e.Name(), "files")
 		_ = filepath.WalkDir(filesDir, func(_ string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
+			// On per-entry walk errors (permission denied, broken
+			// symlink, race with concurrent vault clean) we skip
+			// the entry and keep walking. This is a best-effort
+			// size estimate for `cmdguard path` — an underestimate
+			// is acceptable, but refusing to print anything because
+			// of one unreadable file would be a worse experience.
+			//
+			// nilerr flags this because we receive a non-nil err
+			// and return nil; that's intentional here per the
+			// filepath.WalkDir contract (return nil = skip this
+			// entry, keep walking).
+			if err != nil {
+				return nil //nolint:nilerr // best-effort size walk
+			}
+			if d.IsDir() {
 				return nil
 			}
 			if info, err := d.Info(); err == nil {

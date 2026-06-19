@@ -94,6 +94,10 @@ const (
 	ListTableSeparator = "--------  --------------------  ------  --------  --------------------------------"
 
 	// ListBypassTag is appended to table rows that used --bypass.
+	//
+	// #nosec G101 -- gosec flags "bypass" as credential-looking.
+	// This is a display format string, not a secret; the "%s"
+	// holds an agent identifier.
 	ListBypassTag = "  [bypass:%s]"
 
 	// ListExpiredTag is appended to expired entries.

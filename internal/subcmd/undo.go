@@ -292,6 +292,8 @@ func RunUndo(args []string) {
 // loose (any error → "no manifest") so a corrupt manifest falls back
 // gracefully to the legacy basename-matching path.
 func readBackupManifest(backupDir string) ([]string, bool) {
+	// #nosec G304 -- backupDir is a vault subdirectory identified
+	// by backup ID; manifest.json is a cmdguard-written file.
 	data, err := os.ReadFile(filepath.Join(backupDir, "manifest.json"))
 	if err != nil {
 		return nil, false

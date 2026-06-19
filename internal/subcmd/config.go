@@ -54,6 +54,9 @@ func RunConfig(args []string) {
 	// --raw: dump raw config.toml content
 	if showRaw {
 		cfgPath := config.ConfigPath()
+		// #nosec G304 -- cfgPath is the cmdguard config.toml
+		// path, computed from CMDGUARD_CONFIG_DIR or ~/.cmdguard.
+		// Not user-supplied argv.
 		data, err := os.ReadFile(cfgPath)
 		if err != nil {
 			if os.IsNotExist(err) {

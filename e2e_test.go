@@ -11,6 +11,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -75,7 +76,8 @@ func run(t *testing.T, configDir string, args ...string) (stdout, stderr string,
 	err := cmd.Run()
 	exitCode = 0
 	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
 			exitCode = ee.ExitCode()
 		} else {
 			t.Fatalf("run %v: %v", args, err)
@@ -263,7 +265,8 @@ confirm_double_timeout = 10
 
 	err := cmd.Run()
 	exitCode := 0
-	if ee, ok := err.(*exec.ExitError); ok {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
 		exitCode = ee.ExitCode()
 	}
 
