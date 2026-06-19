@@ -71,9 +71,12 @@ func RunUndo(args []string) {
 	}
 
 	if id == "" && !interactive {
-		fmt.Println(msg.UndoUsage)
-		fmt.Println(msg.UndoUsagePipe)
-		fmt.Println(msg.UndoUsageInteractive)
+		// Usage block on a non-zero exit: route to stderr so callers
+		// piping stdout (e.g. `undo | something`) don't accidentally
+		// inhale the usage text. Sweep finding (P3-2).
+		fmt.Fprintln(os.Stderr, msg.UndoUsage)
+		fmt.Fprintln(os.Stderr, msg.UndoUsagePipe)
+		fmt.Fprintln(os.Stderr, msg.UndoUsageInteractive)
 		os.Exit(1)
 	}
 
@@ -136,17 +139,21 @@ func RunUndo(args []string) {
 	// Find the log entry
 	entry := logger.FindByID(id)
 	if entry == nil {
-		fmt.Printf(msg.UndoIDNotFound+"\n", id)
+		// Failure path → stderr + exit 1. Earlier this went to stdout,
+		// which broke `cmd 2>/dev/null` pipelines that try to silence
+		// errors. Sweep finding (P3-1). Same below for Expired,
+		// Rejected, BackupNotFound.
+		fmt.Fprintf(os.Stderr, msg.UndoIDNotFound+"\n", id)
 		os.Exit(1)
 	}
 
 	if entry.Expired {
-		fmt.Println(msg.UndoExpired)
+		fmt.Fprintln(os.Stderr, msg.UndoExpired)
 		os.Exit(1)
 	}
 
 	if entry.Action == msg.LevelReject {
-		fmt.Println(msg.UndoRejected)
+		fmt.Fprintln(os.Stderr, msg.UndoRejected)
 		os.Exit(1)
 	}
 
@@ -158,7 +165,7 @@ func RunUndo(args []string) {
 
 	backupDir := v.FindBackupDir(entry.ID)
 	if backupDir == "" {
-		fmt.Printf(msg.UndoBackupNotFound+"\n", entry.ID)
+		fmt.Fprintf(os.Stderr, msg.UndoBackupNotFound+"\n", entry.ID)
 		os.Exit(1)
 	}
 
@@ -179,7 +186,7 @@ func RunUndo(args []string) {
 		// Legacy fallback: list backed-up files.
 		filesDir := filepath.Join(backupDir, "files")
 		if _, err := os.ReadDir(filesDir); err != nil {
-			fmt.Printf(msg.UndoBackupNotFound+"\n", entry.ID)
+			fmt.Fprintf(os.Stderr, msg.UndoBackupNotFound+"\n", entry.ID)
 			os.Exit(1)
 		}
 	}
@@ -207,7 +214,10 @@ func RunUndo(args []string) {
 		// Manifest path → absolute original path is exactly where we restore.
 		for _, p := range manifestEntries {
 			if err := v.RestoreFile(backupDir, p); err != nil {
-				fmt.Printf(msg.UndoRestoreFailed+"\n", p, err)
+				// Per-file restore failure is a warning, not fatal:
+				// we still try the rest. Stderr because it's an error
+				// condition (sweep finding P3-1).
+				fmt.Fprintf(os.Stderr, msg.UndoRestoreFailed+"\n", p, err)
 			} else {
 				restored++
 			}
@@ -221,7 +231,7 @@ func RunUndo(args []string) {
 			for _, t := range logTargets {
 				if filepath.Base(t) == name {
 					if err := v.RestoreFile(backupDir, t); err != nil {
-						fmt.Printf(msg.UndoRestoreFailed+"\n", t, err)
+						fmt.Fprintf(os.Stderr, msg.UndoRestoreFailed+"\n", t, err)
 					} else {
 						restored++
 					}
