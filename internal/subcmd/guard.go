@@ -124,7 +124,12 @@ func RunGuard(cmdName string, args []string) {
 			}
 			if realCmd, err := findRealCommand(cmdName); err == nil {
 				if output, err := exec.Command(realCmd, "--version").Output(); err == nil {
-					os.Stdout.Write(output)
+					// Best-effort relay of the underlying tool's
+					// --version banner. We're about to os.Exit(0),
+					// so a Stdout.Write error (closed pipe, etc.)
+					// is not actionable; ignore explicitly to
+					// satisfy errcheck.
+					_, _ = os.Stdout.Write(output)
 				}
 			}
 			os.Exit(0)
@@ -133,7 +138,9 @@ func RunGuard(cmdName string, args []string) {
 			fmt.Println()
 			if realCmd, err := findRealCommand(cmdName); err == nil {
 				if output, err := exec.Command(realCmd, "--help").Output(); err == nil {
-					os.Stdout.Write(output)
+					// Same rationale as --version above: best-effort
+					// pass-through right before os.Exit.
+					_, _ = os.Stdout.Write(output)
 				}
 			}
 			os.Exit(0)
@@ -570,7 +577,10 @@ func isCmdguardWrapper(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	// Read-only path: a Close error here can only mean an underlying
+	// FS issue we have no recourse for, and the read result is already
+	// in memory. Best-effort close is the right tradeoff.
+	defer func() { _ = f.Close() }()
 
 	// 256 bytes covers `#!/bin/bash\n# cmdguard:wrapper:vN\n` with
 	// plenty of slack for future shebang variants.
@@ -678,8 +688,4 @@ func emitNonTTYRejectionTimeout(cmdName string, args, targets []string, result *
 		Message: fmt.Sprintf(msg.ConfirmTimeoutLogMsg, seconds),
 	}
 	appendLog(logEntry)
-}
-
-func printGuardHelp(cmdName string) {
-	fmt.Print(msg.GuardHelp(cmdName))
 }

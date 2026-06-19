@@ -260,7 +260,12 @@ func TestNewID_HexFormat(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		id := NewID()
 		for _, c := range id {
-			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			// De Morgan'd from the original `!((digit) || (lowhex))`
+			// — staticcheck QF1001. The condition reads as "fails if
+			// the rune is neither a decimal digit nor a lowercase
+			// hex letter", which is what NewID's hex output must
+			// guarantee.
+			if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 				t.Fatalf("NewID() = %q contains non-hex char %q", id, c)
 			}
 		}
