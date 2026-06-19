@@ -12,7 +12,7 @@ import (
 	"github.com/hyper0x/cmdguard/internal/config"
 )
 
-// Backup represents a single vault backup entry
+// Backup represents a single vault backup entry.
 type Backup struct {
 	ID        string
 	Timestamp time.Time
@@ -48,13 +48,13 @@ type Manifest struct {
 	Files   []ManifestEntry `json:"files"`
 }
 
-// Vault manages file backups
+// Vault manages file backups.
 type Vault struct {
 	dir string
 	cfg *config.VaultConfig
 }
 
-// New creates a new Vault instance
+// New creates a new Vault instance.
 func New(cfg *config.VaultConfig) (*Vault, error) {
 	dir := filepath.Join(config.ConfigDir(), "vault")
 	// 0700: vault holds copies of files the user just deleted. Many
@@ -69,7 +69,7 @@ func New(cfg *config.VaultConfig) (*Vault, error) {
 	return &Vault{dir: dir, cfg: cfg}, nil
 }
 
-// BackupDir returns the path for a new backup
+// BackupDir returns the path for a new backup.
 func (v *Vault) BackupDir(id string) string {
 	ts := time.Now().Format("20060102_150405")
 	return filepath.Join(v.dir, fmt.Sprintf("%s_%s", ts, id))
@@ -81,8 +81,8 @@ func (v *Vault) BackupDir(id string) string {
 // (with a leading "/" stripped) so files with the same basename
 // from different directories no longer collide:
 //
-//   /etc/foo.conf  →  files/etc/foo.conf
-//   /opt/foo.conf  →  files/opt/foo.conf
+//	/etc/foo.conf  →  files/etc/foo.conf
+//	/opt/foo.conf  →  files/opt/foo.conf
 //
 // Preserving mode matters because restoring a file like ~/.ssh/id_rsa
 // with default 0644 would silently weaken its security posture
@@ -292,7 +292,7 @@ func (v *Vault) appendManifest(backupDir string, entry ManifestEntry) error {
 }
 
 // PurgeExpired removes backups older than retention_days
-// Returns the list of purged backup IDs
+// Returns the list of purged backup IDs.
 func (v *Vault) PurgeExpired() ([]string, error) {
 	if v.cfg.RetentionDays <= 0 {
 		return nil, nil
@@ -338,7 +338,7 @@ func (v *Vault) PurgeExpired() ([]string, error) {
 	return purged, nil
 }
 
-// ListExpired returns backup directories older than retention_days (without deleting)
+// ListExpired returns backup directories older than retention_days (without deleting).
 func (v *Vault) ListExpired() ([]string, error) {
 	if v.cfg.RetentionDays <= 0 {
 		return nil, nil
@@ -379,7 +379,7 @@ func (v *Vault) ListExpired() ([]string, error) {
 	return expired, nil
 }
 
-// BackupInfo holds display info for a vault backup entry
+// BackupInfo holds display info for a vault backup entry.
 type BackupInfo struct {
 	ID        string
 	Timestamp time.Time
@@ -443,7 +443,7 @@ func (v *Vault) ListAll() ([]BackupInfo, error) {
 	return backups, nil
 }
 
-// BackupExists checks if a backup directory exists for the given ID (supports prefix)
+// BackupExists checks if a backup directory exists for the given ID (supports prefix).
 func (v *Vault) BackupExists(id string) bool {
 	entries, err := os.ReadDir(v.dir)
 	if err != nil {
@@ -462,7 +462,7 @@ func (v *Vault) BackupExists(id string) bool {
 	return false
 }
 
-// FindBackupDir finds the backup directory for a given ID (supports prefix)
+// FindBackupDir finds the backup directory for a given ID (supports prefix).
 func (v *Vault) FindBackupDir(id string) string {
 	entries, err := os.ReadDir(v.dir)
 	if err != nil {

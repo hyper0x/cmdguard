@@ -85,7 +85,7 @@ func TestPrintDirFiles_ShowsOnlyFirst5(t *testing.T) {
 	tmp := setupPathEnv(t)
 	dir := filepath.Join(tmp, "log")
 	os.MkdirAll(dir, 0755)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		os.WriteFile(filepath.Join(dir, fmt.Sprintf("2026-06-%02d.log", i+1)), []byte("a"), 0644)
 	}
 

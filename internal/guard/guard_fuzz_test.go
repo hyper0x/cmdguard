@@ -92,8 +92,7 @@ func FuzzMatchPath(f *testing.F) {
 		//     "**" — Clean can sometimes rewrite "**foo" if it contains
 		//     separators (e.g. "**/foo"), in which case the suffix
 		//     family no longer applies and we skip.
-		if strings.HasPrefix(cleanedPattern, "**") {
-			suffix := strings.TrimPrefix(cleanedPattern, "**")
+		if suffix, ok := strings.CutPrefix(cleanedPattern, "**"); ok {
 			if suffix != "" &&
 				!strings.ContainsAny(suffix, "*?") &&
 				!strings.Contains(suffix, "/") {

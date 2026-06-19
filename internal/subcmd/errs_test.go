@@ -105,11 +105,9 @@ func captureStderr(t *testing.T, fn func()) string {
 	// in case someone extends the test with bigger payloads.
 	var buf bytes.Buffer
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		_, _ = io.Copy(&buf, r)
-	}()
+	})
 
 	fn()
 

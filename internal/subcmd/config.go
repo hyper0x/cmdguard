@@ -8,7 +8,7 @@ import (
 	"github.com/hyper0x/cmdguard/internal/msg"
 )
 
-// RunConfig handles the "config" command
+// RunConfig handles the "config" command.
 func RunConfig(args []string) {
 	// Parse flags. Each branch is explicit; unknown flags are rejected
 	// with errExit so typos like `--recnet` don't silently fall through
@@ -89,7 +89,7 @@ func RunConfig(args []string) {
 	printConfig(cfg)
 }
 
-// printConfig renders a Config struct to stdout
+// printConfig renders a Config struct to stdout.
 func printConfig(cfg *config.Config) {
 	fmt.Printf(msg.ConfigFile+"\n", config.ConfigPath())
 	fmt.Println()

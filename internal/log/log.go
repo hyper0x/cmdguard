@@ -15,7 +15,7 @@ import (
 	"github.com/hyper0x/cmdguard/internal/msg"
 )
 
-// Entry represents a single log entry
+// Entry represents a single log entry.
 type Entry struct {
 	ID        string `json:"id"`
 	Timestamp string `json:"timestamp"`
@@ -28,7 +28,7 @@ type Entry struct {
 	Expired   bool   `json:"expired,omitempty"`
 }
 
-// Log manages operation logs
+// Log manages operation logs.
 type Log struct {
 	mu       sync.RWMutex
 	dir      string
@@ -36,7 +36,7 @@ type Log struct {
 	maxLines int
 }
 
-// New creates a new Log instance
+// New creates a new Log instance.
 func New() (*Log, error) {
 	dir := filepath.Join(config.ConfigDir(), "log")
 	// 0700: the audit log is private to the user. Other principals
@@ -61,12 +61,12 @@ func New() (*Log, error) {
 	return l, nil
 }
 
-// logFilePath returns the path to today's log file
+// logFilePath returns the path to today's log file.
 func (l *Log) logFilePath() string {
 	return filepath.Join(l.dir, time.Now().Format("2006-01-02")+".log")
 }
 
-// load reads log entries from today's log file
+// load reads log entries from today's log file.
 func (l *Log) load() error {
 	path := l.logFilePath()
 	// #nosec G304 -- path is derived from CMDGUARD_CONFIG_DIR (or
@@ -80,8 +80,7 @@ func (l *Log) load() error {
 		return err
 	}
 
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	for _, line := range lines {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(data)), "\n") {
 		if line == "" {
 			continue
 		}
@@ -116,7 +115,7 @@ func NewID() string {
 	return fmt.Sprintf("%012x", time.Now().UnixNano())[:12]
 }
 
-// Append adds a new log entry and writes to file
+// Append adds a new log entry and writes to file.
 func (l *Log) Append(entry Entry) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -152,8 +151,8 @@ func (l *Log) Append(entry Entry) error {
 	// a successful Sync is informational at best (and on Linux
 	// always nil for regular files), so swallowing it keeps the
 	// hot path simple. errcheck silenced via `_ =` rather than a
-	// nolint directive because the reasoning is type-level, not
-	// linter-specific.
+	// linter-suppression directive because the reasoning is
+	// type-level, not linter-specific.
 	defer func() { _ = f.Close() }()
 
 	if _, err := f.Write(append(line, '\n')); err != nil {
@@ -172,7 +171,7 @@ func (l *Log) Append(entry Entry) error {
 	return nil
 }
 
-// Query searches log entries with filters
+// Query searches log entries with filters.
 type Query struct {
 	Recent int
 	Since  time.Duration
@@ -180,7 +179,7 @@ type Query struct {
 	Path   string
 }
 
-// Search returns matching log entries, newest first
+// Search returns matching log entries, newest first.
 func (l *Log) Search(q Query) []Entry {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
@@ -233,7 +232,7 @@ func (l *Log) Search(q Query) []Entry {
 	return result
 }
 
-// FindByID finds a single entry by ID (supports prefix matching)
+// FindByID finds a single entry by ID (supports prefix matching).
 func (l *Log) FindByID(id string) *Entry {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
@@ -254,7 +253,7 @@ func (l *Log) FindByID(id string) *Entry {
 	return match
 }
 
-// MarkExpired marks entries whose vault has been purged
+// MarkExpired marks entries whose vault has been purged.
 func (l *Log) MarkExpired(ids []string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -274,7 +273,7 @@ func (l *Log) MarkExpired(ids []string) error {
 	return l.rewrite()
 }
 
-// rewrite rewrites today's log file with current in-memory entries
+// rewrite rewrites today's log file with current in-memory entries.
 func (l *Log) rewrite() error {
 	path := l.logFilePath()
 	// #nosec G304 -- same trust model as load(): path is fully

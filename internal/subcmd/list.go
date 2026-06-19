@@ -2,6 +2,7 @@ package subcmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,7 +12,7 @@ import (
 	"github.com/hyper0x/cmdguard/internal/msg"
 )
 
-// RunList handles the "list" command
+// RunList handles the "list" command.
 func RunList(args []string) {
 	logger, err := log.New()
 	if err != nil {
@@ -138,11 +139,11 @@ func RunList(args []string) {
 func parseDuration(s string) (time.Duration, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return 0, fmt.Errorf("empty duration")
+		return 0, errors.New("empty duration")
 	}
 
-	if strings.HasSuffix(s, "d") {
-		days, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
+	if digits, ok := strings.CutSuffix(s, "d"); ok {
+		days, err := strconv.Atoi(digits)
 		if err != nil {
 			return 0, fmt.Errorf("invalid days value: %w", err)
 		}

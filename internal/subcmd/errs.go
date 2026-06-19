@@ -25,7 +25,7 @@ import (
 // The template is the bare error text, e.g. "failed to load config: %v".
 // Do NOT embed the [cmdguard] tag or "error:" prefix in the template —
 // they are added by msg.FmtErr.
-func errExit(format string, args ...interface{}) {
+func errExit(format string, args ...any) {
 	fmt.Fprintln(os.Stderr, msg.FmtErr(format, args...))
 	os.Exit(1)
 }
@@ -34,13 +34,13 @@ func errExit(format string, args ...interface{}) {
 // exiting. Use this when the caller wants to continue running
 // (e.g. printing extra guidance after the error before exiting
 // at a different point).
-func errPrint(format string, args ...interface{}) {
+func errPrint(format string, args ...any) {
 	fmt.Fprintln(os.Stderr, msg.FmtErr(format, args...))
 }
 
 // warn prints a [cmdguard] warning to stderr. Used for non-fatal
 // degraded conditions (backup failed, log load failed, etc.).
-func warn(format string, args ...interface{}) {
+func warn(format string, args ...any) {
 	fmt.Fprintln(os.Stderr, msg.FmtWarn(format, args...))
 }
 

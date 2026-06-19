@@ -2,6 +2,7 @@ package msg
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -36,11 +37,9 @@ func containsPlaceholder(id string) bool {
 		return true
 	}
 	lower := strings.ToLower(id)
-	for _, seg := range strings.Split(lower, "/") {
-		for _, tok := range placeholderTokens {
-			if seg == tok {
-				return true
-			}
+	for seg := range strings.SplitSeq(lower, "/") {
+		if slices.Contains(placeholderTokens, seg) {
+			return true
 		}
 	}
 	return false
@@ -70,7 +69,7 @@ func ValidateBypass(id string) bool {
 	// Use a manual split so we reject empty segments and extra slashes.
 	parts := []string{}
 	start := 0
-	for i := 0; i < len(id); i++ {
+	for i := range len(id) {
 		if id[i] == '/' {
 			parts = append(parts, id[start:i])
 			start = i + 1

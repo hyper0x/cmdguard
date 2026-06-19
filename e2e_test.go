@@ -23,7 +23,7 @@ import (
 var (
 	binPath  string
 	binOnce  sync.Once
-	binBuild error
+	errBinBuild error
 )
 
 // safeEnv returns a minimal environment for the subprocess that:
@@ -45,18 +45,18 @@ func buildOnce(t *testing.T) string {
 	binOnce.Do(func() {
 		dir, err := os.MkdirTemp("", "cmdguard-e2e-bin-*")
 		if err != nil {
-			binBuild = err
+			errBinBuild = err
 			return
 		}
 		binPath = filepath.Join(dir, "cmdguard")
 		cmd := exec.Command("go", "build", "-o", binPath, ".")
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			binBuild = err
+			errBinBuild = err
 		}
 	})
-	if binBuild != nil {
-		t.Fatalf("build cmdguard: %v", binBuild)
+	if errBinBuild != nil {
+		t.Fatalf("build cmdguard: %v", errBinBuild)
 	}
 	return binPath
 }

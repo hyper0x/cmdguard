@@ -27,7 +27,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// PathProtectLevel defines the protection level for a path pattern
+// PathProtectLevel defines the protection level for a path pattern.
 type PathProtectLevel string
 
 const (
@@ -37,14 +37,14 @@ const (
 	LevelWarn           PathProtectLevel = "warn"
 )
 
-// PathRule represents a path protection rule
+// PathRule represents a path protection rule.
 type PathRule struct {
 	Path  string           `toml:"path"`
 	Level PathProtectLevel `toml:"level"`
 }
 
 // ProtectConfig holds path lists grouped by protection level,
-// plus per-command overrides
+// plus per-command overrides.
 type ProtectConfig struct {
 	Reject         []string                   `toml:"reject"`
 	ConfirmDouble  []string                   `toml:"confirm_double"`
@@ -53,7 +53,7 @@ type ProtectConfig struct {
 	Command        map[string]ProtectConfig   `toml:"command"`
 }
 
-// VaultConfig holds vault settings
+// VaultConfig holds vault settings.
 type VaultConfig struct {
 	RetentionDays int  `toml:"retention_days"`
 	AutoPurge     bool `toml:"auto_purge"`
@@ -79,14 +79,14 @@ type GuardConfig struct {
 	ConfirmDoubleTimeout int `toml:"confirm_double_timeout"`
 }
 
-// Config is the top-level configuration
+// Config is the top-level configuration.
 type Config struct {
 	Protect ProtectConfig `toml:"protect"`
 	Vault   VaultConfig   `toml:"vault"`
 	Guard   GuardConfig   `toml:"guard"`
 }
 
-// DefaultConfig returns a config with sensible defaults
+// DefaultConfig returns a config with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
 		Protect: ProtectConfig{
@@ -137,7 +137,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-// ConfigDir returns ~/.cmdguard
+// ConfigDir returns ~/.cmdguard.
 func ConfigDir() string {
 	if d := os.Getenv(EnvConfigDir); d != "" {
 		return d
@@ -146,7 +146,7 @@ func ConfigDir() string {
 	return filepath.Join(home, ".cmdguard")
 }
 
-// ConfigPath returns the path to the config file
+// ConfigPath returns the path to the config file.
 func ConfigPath() string {
 	return filepath.Join(ConfigDir(), "config.toml")
 }
@@ -219,7 +219,7 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// ExpandHome expands ~ or ~/ to the user's home directory
+// ExpandHome expands ~ or ~/ to the user's home directory.
 func ExpandHome(path string) string {
 	if path == "~" {
 		home, _ := os.UserHomeDir()
@@ -232,7 +232,7 @@ func ExpandHome(path string) string {
 	return path
 }
 
-// flattenProtect converts a ProtectConfig into a flat PathRule slice
+// flattenProtect converts a ProtectConfig into a flat PathRule slice.
 func flattenProtect(p *ProtectConfig) []PathRule {
 	// Preallocate: we know the final slice length is exactly the sum
 	// of the four source slices, so growing the backing array via
@@ -253,7 +253,7 @@ func flattenProtect(p *ProtectConfig) []PathRule {
 	return rules
 }
 
-// GetProtectRules returns merged protection rules for a given command
+// GetProtectRules returns merged protection rules for a given command.
 func (c *Config) GetProtectRules(cmd string) []PathRule {
 	global := flattenProtect(&c.Protect)
 

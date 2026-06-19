@@ -12,7 +12,7 @@ import (
 	"github.com/hyper0x/cmdguard/internal/vault"
 )
 
-// RunVault handles the "vault" command
+// RunVault handles the "vault" command.
 func RunVault(args []string) {
 	// Require an explicit subcommand. Earlier this defaulted to
 	// "clean", which meant `cmdguard vault` (no args) silently ran a
