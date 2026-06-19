@@ -40,12 +40,15 @@ alias chmod='cmdguard chmod'
 
 ### 防护 AI 智能体误操作
 
-将 `~/.cmdguard/bin/` 放到 PATH 最前面，智能体执行 `rm`/`mv`/`chmod` 时会先命中 cmdguard 包装脚本：
+将 cmdguard 的 wrapper 目录放到 PATH 最前面，智能体执行 `rm`/`mv`/`chmod` 时会先命中 cmdguard 包装脚本：
 
 ```bash
-export PATH="$HOME/.cmdguard/bin:$PATH"
+export PATH="$(cmdguard config --bin-dir):$PATH"
 export CMDGUARD_NONINTERACTIVE=1   # 跳过 5/10 秒等待
 ```
+
+`cmdguard config --bin-dir` 会以裸路径形式打印 wrapper 目录（默认 `~/.cmdguard/bin`，
+也可能是你自定义的位置），即使将来调整目录布局，上面的 export 也仍然正确。
 
 两种方式可以共存。
 
@@ -118,8 +121,10 @@ cmdguard init
 | `init [--force] [--dry-run]` | 初始化环境 |
 | `list [选项]` | 列出审计日志 |
 | `undo [选项]` | 从 vault 恢复操作 |
+| `vault list [--json]` | 列出全部 vault 备份 |
 | `vault clean [--dry-run]` | 清理过期 vault 备份 |
-| `config` | 查看当前配置 |
+| `config [--default \| --raw \| --bin-dir]` | 多视角查看配置 |
+| `path` | 展示 cmdguard 目录结构 |
 | `help` / `version` | 帮助/版本 |
 
 完整命令参考：[docs/commands.md](docs/commands.md)

@@ -40,13 +40,17 @@ alias chmod='cmdguard chmod'
 
 ### Protecting AI agents
 
-Put `~/.cmdguard/bin/` at the front of `PATH` so the agent's `rm`/`mv`/`chmod`
-lookups hit cmdguard's wrappers:
+Put cmdguard's wrapper directory at the front of `PATH` so the agent's
+`rm`/`mv`/`chmod` lookups hit cmdguard's wrappers:
 
 ```bash
-export PATH="$HOME/.cmdguard/bin:$PATH"
+export PATH="$(cmdguard config --bin-dir):$PATH"
 export CMDGUARD_NONINTERACTIVE=1   # skip the 5s/10s confirm wait
 ```
+
+`cmdguard config --bin-dir` prints the wrapper directory as a bare
+path (default `~/.cmdguard/bin`, or wherever your install puts it),
+so the export above stays correct even if you customise the layout.
 
 Both methods can coexist.
 
@@ -128,8 +132,10 @@ overwrite (old files are zipped to `~/.cmdguard/backup/`).
 | `init [--force] [--dry-run]` | Initialize the environment |
 | `list [options]` | List audit log entries |
 | `undo [options]` | Restore an operation from vault |
+| `vault list [--json]` | List all vault backups |
 | `vault clean [--dry-run]` | Purge expired vault backups |
-| `config` | Print the active configuration |
+| `config [--default \| --raw \| --bin-dir]` | Print configuration views |
+| `path` | Show the cmdguard directory layout |
 | `help` / `version` | Self-explanatory |
 
 Full reference: [docs/commands.md](docs/commands.md)
