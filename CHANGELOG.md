@@ -1,5 +1,74 @@
 # Changelog
 
+## v0.13.0 (2026-06-19)
+
+A hardening release: no new user-facing features, but three real bugs
+found by expanding the static-analysis linter set, plus a sweep of
+Go 1.22–1.26 modernisation and tighter file permissions across the
+entire `~/.cmdguard` tree.
+
+### Bug fixes (found by new linters)
+
+- **Dead `reasonTimeout` enum value.** The `nonTTYReason` type declared
+  `reasonTimeout` but the `emitNonTTYRejection` switch never handled
+  it — timeout rejection goes through a separate function. Removed
+  the dead value; `exhaustive` now verifies every `switch` on the
+  type covers all declared cases.
+- **Duplicate "agent" in bypass help text.** The 4-segment identifier
+  table printed `agent   agent id`, which `dupword` flagged. Changed
+  to `agent   unique identifier`.
+- **Possible nil dereference after `os.Exit`.** `staticcheck SA5011`
+  reported that after the `if entry == nil { os.Exit(1) }` guard,
+  `entry.Expired` dereferences a pointer that the analyser cannot prove
+  is non-nil (because it doesn't know `os.Exit` never returns). Added
+  an unreachable `return` to close the path.
+
+### File permissions tightened
+
+Every file and directory under `~/.cmdguard` is now owner-only:
+
+| Path                         | Before | After |
+|------------------------------|--------|-------|
+| vault root dir               | 0755   | 0700  |
+| vault per-backup dir         | 0755   | 0700  |
+| vault files/ subdirs          | 0755   | 0700  |
+| manifest.json                | 0644   | 0600  |
+| backup/ dir (init --force)   | 0755   | 0700  |
+| config dir / bin / log / vault| 0755   | 0700  |
+| config.toml                  | 0644   | 0600  |
+| wrapper scripts (rm/mv/chmod)| 0755   | 0700  |
+| audit log                    | 0644   | 0600  |
+
+Rationale: the vault holds copies of files the user just deleted
+(`~/.ssh/id_rsa`, `/etc/shadow`, …). A world-readable manifest
+advertising the existence of those originals defeats the purpose
+of deleting them.
+
+### Go 1.22–1.26 modernisation
+
+- `strings.HasPrefix` + `TrimPrefix` → `strings.CutPrefix`
+- `strings.HasSuffix` + `TrimSuffix` → `strings.CutSuffix`
+- `strings.Split` → `strings.SplitSeq` (lazy iteration)
+- manual loop → `slices.Contains`
+- `if/else` clamp → `min()` builtin
+- `interface{}` → `any`
+- `wg.Add(1); go func(){ defer wg.Done(); … }()` → `wg.Go(func(){ … })`
+- `for i := 0; i < N; i++` → `for i := range N`
+- `fmt.Errorf("literal")` → `errors.New`
+- `fmt.Sprintf("%d", n)` → `strconv.Itoa(n)`
+- `string +=` in loop → `strings.Builder`
+
+### Static-analysis configuration
+
+`.golangci.yml` expanded from 5 linters to **37** (of 113 available).
+The new additions caught the three bugs listed above, plus a batch of
+modernisation and performance issues. `govulncheck` reports no known
+vulnerabilities.
+
+gosec false positives (cmdguard intentionally launches user-supplied
+commands and reads variable paths) are suppressed per-site with
+`// #nosec` directives, each with a justification comment.
+
 ## v0.12.0 (2026-06-19)
 
 Big jump from v0.6.0 to mark the work density: four new features
