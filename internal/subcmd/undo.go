@@ -263,7 +263,11 @@ func RunUndo(args []string) {
 		fmt.Println(msg.UndoNoFilesRestored)
 	}
 
-	// Log the undo operation
+	// Log the undo operation. A failure to write the audit entry is
+	// surfaced as a warning to stderr — the restore itself already
+	// succeeded, so this is degraded-but-still-correct, not fatal.
+	// Previously the error was silently dropped, which meant a
+	// failed audit-log write left no trace of the undo at all.
 	logEntry := log.Entry{
 		Command: entry.Command,
 		Action:  msg.LevelUndo,
@@ -271,7 +275,13 @@ func RunUndo(args []string) {
 		Message: fmt.Sprintf("undo of %s", entry.ID),
 	}
 	if logger, err := log.New(); err == nil {
-		logger.Append(logEntry)
+		if err := logger.Append(logEntry); err != nil {
+			// ErrLogWrite uses %w which is only valid inside
+			// fmt.Errorf — going through warn → FmtWarn → Sprintf
+			// would render it as "%!w(...)". Use a plain template
+			// here. The cause is included verbatim.
+			warn("failed to write undo entry to audit log: %v", err)
+		}
 	}
 }
 

@@ -26,10 +26,18 @@ func backupFiles(files []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer z.Close()
+	// Don't `defer z.Close()` here: this is a write path, and a
+	// deferred Close would swallow any error from flushing the file's
+	// final bytes to disk — which is exactly the kind of failure that
+	// produces a silently-truncated backup zip. We close explicitly
+	// after the zip writer has flushed its central directory, and
+	// surface either error to the caller. See the explicit close
+	// block at the end of this function.
 
 	w := zip.NewWriter(z)
-	defer w.Close()
+	// Same reasoning for w: zip.Writer.Close() writes the central
+	// directory record. If that fails the archive is corrupt and
+	// unreadable. Must be reported, not deferred-and-dropped.
 
 	cfgDir := config.ConfigDir()
 
@@ -42,7 +50,10 @@ func backupFiles(files []string) (string, error) {
 		if err != nil {
 			return err
 		}
-		defer in.Close()
+		// Read-only handle on the source: best-effort close is fine
+		// because we only consumed bytes; a Close error here can't
+		// corrupt anything we care about.
+		defer func() { _ = in.Close() }()
 
 		info, err := in.Stat()
 		if err != nil {
@@ -72,8 +83,24 @@ func backupFiles(files []string) (string, error) {
 
 	for _, src := range files {
 		if err := addOne(src); err != nil {
+			// On any per-file error, still try to close both writers
+			// so we don't leak fds; ignore their close errors because
+			// the original cause is more informative.
+			_ = w.Close()
+			_ = z.Close()
 			return "", err
 		}
+	}
+
+	// Flush the zip central directory FIRST, then close the underlying
+	// file. If either fails, the archive is unreliable — return the
+	// error so callers know the backup didn't actually complete.
+	if err := w.Close(); err != nil {
+		_ = z.Close()
+		return "", fmt.Errorf("finalize backup zip: %w", err)
+	}
+	if err := z.Close(); err != nil {
+		return "", fmt.Errorf("close backup zip: %w", err)
 	}
 
 	return zipPath, nil

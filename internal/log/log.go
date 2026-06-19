@@ -140,7 +140,15 @@ func (l *Log) Append(entry Entry) error {
 	if err != nil {
 		return fmt.Errorf(msg.ErrLogWrite, err)
 	}
-	defer f.Close()
+	// Close is intentionally ignored here: f.Sync below is the
+	// durability barrier we actually care about, and once Sync
+	// returns the bytes are already on disk. A Close error after
+	// a successful Sync is informational at best (and on Linux
+	// always nil for regular files), so swallowing it keeps the
+	// hot path simple. errcheck silenced via `_ =` rather than a
+	// nolint directive because the reasoning is type-level, not
+	// linter-specific.
+	defer func() { _ = f.Close() }()
 
 	if _, err := f.Write(append(line, '\n')); err != nil {
 		return fmt.Errorf(msg.ErrLogLine, err)
@@ -267,16 +275,26 @@ func (l *Log) rewrite() error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-
+	// Write path → Close error must be reported. A failed Close on a
+	// just-written file usually means the buffered tail did not reach
+	// disk (full FS, quota exceeded, transient I/O error). Silently
+	// dropping that would leave a truncated audit log claiming success.
+	// We return the first error encountered: write/Sync error has
+	// priority over close error, but if everything else succeeded we
+	// still surface the close error.
 	for _, e := range l.entries {
 		line, err := json.Marshal(e)
 		if err != nil {
 			continue
 		}
-		if _, err := f.Write(append(line, '\n')); err != nil {
-			return err
+		if _, werr := f.Write(append(line, '\n')); werr != nil {
+			_ = f.Close()
+			return werr
 		}
 	}
-	return nil
+	if serr := f.Sync(); serr != nil {
+		_ = f.Close()
+		return serr
+	}
+	return f.Close()
 }
