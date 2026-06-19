@@ -19,17 +19,33 @@ func RunUndo(args []string) {
 	interactive := false
 	var id string
 
+	// Strict flag parser: every branch consumes exactly what it
+	// expects, missing values error out, and unknown tokens hit
+	// rejectUnknownArg. The earlier loop dropped unknown flags
+	// silently (P2-2 was fixed for list/config/init/path/vault but
+	// missed undo) — `cmdguard undo --it` would silently behave like
+	// `cmdguard undo` and either pipe-read or print usage, hiding
+	// the typo of `--interactive`.
 	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--id":
-			if i+1 < len(args) {
-				id = args[i+1]
-				i++
+		a := args[i]
+		switch {
+		case a == "--id":
+			if i+1 >= len(args) {
+				errExit(msg.ErrFlagMissingValue, a)
 			}
-		case "--interactive":
+			id = args[i+1]
+			i++
+		case strings.HasPrefix(a, "--id="):
+			id = strings.TrimPrefix(a, "--id=")
+			if id == "" {
+				errExit(msg.ErrFlagMissingValue, "--id")
+			}
+		case a == "--interactive":
 			interactive = true
-		case "--dry-run":
+		case a == "--dry-run":
 			dryRun = true
+		default:
+			rejectUnknownArg(a, "undo")
 		}
 	}
 

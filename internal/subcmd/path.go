@@ -18,7 +18,7 @@ func RunPath(args []string) {
 	// the contract honest — silent acceptance of garbage hides typos
 	// such as `cmdguard path --raw` (user thought of `config --raw`).
 	if len(args) > 0 {
-		errExit(msg.ErrUnknownFlag, args[0], "path")
+		rejectUnknownArg(args[0], "path")
 	}
 
 	cfgDir := config.ConfigDir()

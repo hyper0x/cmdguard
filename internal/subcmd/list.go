@@ -84,7 +84,7 @@ func RunList(args []string) {
 		case a == "--json":
 			jsonOutput = true
 		default:
-			errExit(msg.ErrUnknownFlag, a, "list")
+			rejectUnknownArg(a, "list")
 		}
 	}
 
