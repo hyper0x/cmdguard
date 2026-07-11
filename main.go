@@ -8,8 +8,8 @@ import (
 	subcmd "github.com/hyper0x/cmdguard/internal/subcmd"
 )
 
-var version = "dev"  // set via -ldflags at build time
-var commit = "none"  // set via -ldflags at build time
+var version = "dev" // set via -ldflags at build time
+var commit = "none" // set via -ldflags at build time
 
 func main() {
 	if len(os.Args) < 2 {

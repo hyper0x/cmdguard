@@ -1,5 +1,81 @@
 # Changelog
 
+## v0.14.0 (2026-07-11)
+
+### Breaking: simplified to a non-interactive 3-level model
+
+cmdguard is now **non-interactive by design**. The entire interactive
+confirmation layer (TTY prompts, `readLineWithTimeout`, double-confirm,
+`CMDGUARD_NONINTERACTIVE` env var, `[guard]` config section with
+`confirm_timeout`/`confirm_double_timeout`) has been removed.
+
+The protection model is now exactly three levels:
+
+| Level    | Icon | Behaviour                                                       |
+|----------|------|-----------------------------------------------------------------|
+| reject   | 🚫   | Refused + logged. `--bypass` cannot override. Exit 1.           |
+| guarded  | 🔒   | Without `--bypass`: refused + logged (exit 1). With valid `--bypass`: backup → log → execute. |
+| allow    | ✅   | No rule matched. Logged + executed directly.                    |
+
+### `--bypass` identifier: 4-segment → 3-segment
+
+The bypass identifier format changed from
+`<host>/<platform>/<agent>/<task>` (4 segments) to
+`<platform>/<agent>/<task>` (3 segments). The `host` segment was
+redundant with `platform` in practice.
+
+- Minimum length: 10 characters (was 12).
+- Placeholder blacklist updated: `host` added; all tokens checked as
+  whole-segment equality (case-insensitive), not substrings.
+- Help text and error messages updated with the new format and
+  examples.
+
+### Deprecated config fields retained for backward compatibility
+
+`confirm_double`, `confirm`, and `warn` are still accepted in config
+files and per-command overrides. During `Load()`, their values are
+merged into `guarded`. This means old config files continue to work
+without modification - they just map to the new 2-level protection
+(reject + guarded).
+
+### What was removed
+
+- `CMDGUARD_NONINTERACTIVE` env var (cmdguard is always non-interactive now)
+- `CMDGUARD_AGENT_MODE` env var (never released; was only proposed in docs)
+- `[guard]` config section (`confirm_timeout`, `confirm_double_timeout`)
+- Interactive TTY confirmation flow (`readLineWithTimeout`, single/double confirm)
+- `confirm` and `confirm_double` as *active* protection levels (kept as
+  legacy aliases for reading old logs/configs)
+- `agent_mode` config field
+- Net deletion: ~627 lines across 33 files
+
+### Audit log entries
+
+All three levels now write to the audit log:
+
+| Level   | `action` field | `bypass` field | Notes                              |
+|---------|----------------|----------------|------------------------------------|
+| reject  | `reject`       | (empty)        | Includes rule + message            |
+| guarded (no bypass) | `reject` | (empty) | Message: "rejected: guarded path, no --bypass provided" |
+| guarded (invalid bypass) | `reject` | (empty) | Message: "rejected: invalid --bypass identifier" |
+| guarded (valid bypass) | `guarded` | `<identifier>` | Full bypass ID recorded for traceability |
+| allow   | `allow`        | (empty)        | Message: "no matching rule, allowed" |
+
+### Backup failure diagnostics
+
+When a vault backup fails, the error output now includes the vault
+directory path and a list of common causes (permissions, disk full,
+sandbox restriction), plus a `cmdguard path` hint for further
+diagnosis. Previously the output was a single line with no
+remediation guidance, making it hard for agents and humans to
+determine the root cause.
+
+### Files changed
+
+Code, tests, comments, help text, README (en + zh), docs (commands,
+configuration, vault - en + zh), example config, init template, and
+e2e tests all updated to reflect the new 3-level model.
+
 ## v0.13.0 (2026-06-19)
 
 A hardening release: no new user-facing features, but three real bugs
@@ -290,7 +366,7 @@ no-read-permission, and not-a-regular-file cases.
 
 - `--bypass=<host>/<platform>/<agent>/<task>` flag for AI agents to
   explicitly confirm operations on protected paths from non-TTY contexts
-- Agent env `CMDGUARD_NONINTERACTIVE=1` skips the interactive wait;
+- Agent env `CMDGUARD_AGENT_MODE=1` skips the interactive wait;
   rejection is instant (0 delay). Does NOT grant permission — `--bypass`
   is still required. See `internal/config/env.go` for the contract.
 - `bypass` field in audit log entries; `cmdguard list` displays

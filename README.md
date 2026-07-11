@@ -2,7 +2,7 @@
 
 # cmdguard
 
-**Command protection tool** — guards `rm`, `mv`, `chmod` with confirmation, automatic backup, and undo.
+**Command protection tool** - guards `rm`, `mv`, `chmod` with path rules, automatic backup, and undo.
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/hyper0x/cmdguard)](https://goreportcard.com/report/github.com/hyper0x/cmdguard)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -17,12 +17,12 @@
 
 cmdguard wraps dangerous commands (`rm`, `mv`, `chmod`) to prevent accidental data loss.
 
-- 🚫 **Four protection levels** — reject, confirm_double, confirm, warn
-- 💾 **Automatic backup** — files are copied to a vault before destructive ops
-- ↩️ **Undo** — restore deleted or overwritten files via `cmdguard undo`
-- 📋 **Audit log** — every operation is recorded permanently; searchable & filterable
-- 🤖 **Agent-aware** — explicit handling for AI agents and automation (see below)
-- ⚙️ **TOML config** — glob path patterns, per-command overrides
+- 🚫 **Three protection levels** - reject, guarded, allow
+- 💾 **Automatic backup** - files are copied to a vault before destructive ops
+- ↩️ **Undo** - restore deleted or overwritten files via `cmdguard undo`
+- 📋 **Audit log** - every operation is recorded permanently; searchable & filterable
+- 🔑 **Bypass with audit** - guarded paths can be executed with a `--bypass` identifier that is permanently logged
+- ⚙️ **TOML config** - glob path patterns, per-command overrides
 
 ---
 
@@ -45,7 +45,6 @@ Put cmdguard's wrapper directory at the front of `PATH` so the agent's
 
 ```bash
 export PATH="$(cmdguard config --bin-dir):$PATH"
-export CMDGUARD_NONINTERACTIVE=1   # skip the 5s/10s confirm wait
 ```
 
 `cmdguard config --bin-dir` prints the wrapper directory as a bare
@@ -61,34 +60,26 @@ The model is "protect + audit + recoverable", not "absolute lockdown".
 
 ---
 
-## AI agent usage
+## Bypass identifiers
 
-When an AI agent invokes a guarded command and the target is a protected
-path, cmdguard refuses to hang on an interactive prompt. The agent must:
+When a command targets a **guarded** path, cmdguard rejects it unless the
+caller provides a `--bypass` identifier:
 
-1. **Set the env var** to declare itself non-interactive:
-   ```bash
-   export CMDGUARD_NONINTERACTIVE=1
-   ```
-   This skips the 5s/10s wait at confirm prompts. It does **NOT** grant
-   permission — the operation is still rejected.
+```bash
+rm /path/to/file --bypass=<platform>/<agent>/<task>
+```
 
-2. **If the operation is genuinely safe**, retry with a `--bypass` identifier:
-   ```bash
-   rm /path/to/file --bypass=<host>/<platform>/<agent>/<task>
-   ```
-   The identifier must have exactly 4 segments:
+The identifier must have exactly 3 segments:
 
-   | segment  | meaning                       | example                |
-   |----------|-------------------------------|------------------------|
-   | host     | machine hostname / alias      | `mac-studio`           |
-   | platform | agent platform                | `qwenpaw`, `cursor`    |
-   | agent    | agent id                      | `ai_research`          |
-   | task     | brief task slug               | `cleanup-tmp-dirs`     |
+| segment  | meaning                  | example                |
+|----------|--------------------------|------------------------|
+| platform | agent platform           | `qwenpaw`, `cursor`    |
+| agent    | agent id or `manual`     | `ai_research`          |
+| task     | brief task slug          | `cleanup-tmp-dirs`     |
 
-   Allowed characters: `[a-zA-Z0-9._-]`. Empty segments, angle brackets,
-   and template placeholder words (`host`, `agent`, `task`, `xxx`, `foo`,
-   `todo`, ...) are rejected.
+Allowed characters: `[a-zA-Z0-9._-]`. Empty segments, angle brackets,
+and template placeholder words (`agent`, `task`, `xxx`, `foo`, `todo`,
+...) are rejected.
 
 Every bypass is recorded in the audit log with the full identifier, so
 the audit trail attributes every protected-path operation back to a
@@ -103,10 +94,10 @@ See [docs/commands.md](docs/commands.md#--bypass) for full details.
 ### Install
 
 ```bash
-# Option 1 — pre-built binary (recommended)
+# Option 1 - pre-built binary (recommended)
 # Download from the Releases page for your platform.
 
-# Option 2 — build from source
+# Option 2 - build from source
 git clone https://github.com/hyper0x/cmdguard.git
 cd cmdguard
 make install   # installs to $GOBIN with version info baked in
@@ -119,7 +110,7 @@ cmdguard init
 ```
 
 Creates `~/.cmdguard/{config.toml, bin/, log/, vault/}` and prints the
-integration guide. Idempotent — re-running is safe. Use `--force` to
+integration guide. Idempotent - re-running is safe. Use `--force` to
 overwrite (old files are zipped to `~/.cmdguard/backup/`).
 
 ---
@@ -148,18 +139,12 @@ Location: `~/.cmdguard/config.toml` (overridable via `CMDGUARD_CONFIG_DIR`).
 
 ```toml
 [protect]
-reject         = ["/etc/**", "/private/**", "~/.ssh/**"]
-confirm_double = ["~/.config/**"]
-confirm        = ["~/Documents/**", "~/Desktop/**"]
-warn           = ["~/Downloads/**"]
+reject  = ["/etc/**", "/private/**", "~/.ssh/**"]
+guarded = ["~/.config/**", "~/Documents/**", "~/Desktop/**"]
 
 [vault]
 retention_days = 7
 auto_purge     = true
-
-[guard]
-confirm_timeout        = 5    # seconds; 'confirm' prompt
-confirm_double_timeout = 10   # seconds per step; 'confirm_double' prompt
 ```
 
 > **The config file is read-only from cmdguard's perspective.** cmdguard
@@ -198,19 +183,14 @@ make install  # install to $GOBIN
 Yes. `/bin/rm /etc/passwd` skips the PATH lookup entirely. cmdguard is
 protection + audit + recovery, not an absolute lockdown.
 
-**What's the difference between `confirm` and `confirm_double`?**
-`confirm` requires a single `y`. `confirm_double` requires `y` first and
-then typing the full word `yes` — designed to defeat fatigue errors on
-high-risk paths.
+**What's the difference between `reject` and `guarded`?**
+`reject` always blocks, even with `--bypass`. `guarded` blocks without
+`--bypass`, but allows execution with a valid `--bypass` identifier
+(after backup).
 
 **What if my config file gets overwritten?**
 `cmdguard init` never overwrites without `--force`. With `--force`, the
 old file is preserved at `~/.cmdguard/backup/init-<timestamp>.zip`.
-
-**Where do agents put `CMDGUARD_NONINTERACTIVE`?**
-In the agent's shell init or wherever the agent's environment is set up.
-Once exported, every cmdguard call in that environment skips the wait
-and goes straight to the bypass-or-reject path.
 
 **How do I uninstall?**
 ```bash

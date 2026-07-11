@@ -5,7 +5,7 @@ Audit binary: `/tmp/cmdguard-audit` built from current HEAD with
 
 Sweep environment:
 - `CMDGUARD_CONFIG_DIR=/tmp/cmdguard-sweep.<id>/cfg` (isolated)
-- `CMDGUARD_NONINTERACTIVE=1`
+- ~~`CMDGUARD_AGENT_MODE=1`~~ (removed in v0.14.0; cmdguard is now non-interactive by design)
 - `PATH` left at the agent default (this matters — see Finding 1)
 - Playground: `/tmp/cmdguard-sweep.<id>/playground`
 

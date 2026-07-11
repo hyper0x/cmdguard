@@ -23,14 +23,14 @@ rm -rf ~/Downloads/temp
 | `--verbose` | Print detailed execution info (matched rule, backup path, actual command) |
 | `--version` | Show cmdguard version; also attempt to show the underlying command's version (GNU tools work, BSD silently skipped) |
 | `--help` | Show cmdguard help (with protection levels); also attempt to show the underlying command's help |
-| `--bypass=<id>` | Force execution of a protected path (agent use, see [`--bypass`](#--bypass) below) |
+| `--bypass=<id>` | Force execution of a guarded path (see [`--bypass`](#--bypass) below) |
 
 ### Examples
 
 ```bash
 # Verify the alias is active
 rm --check
-# [cmdguard] guard active — rm is running through cmdguard
+# [cmdguard] guard active - rm is running through cmdguard
 
 # Show version
 rm --version
@@ -51,25 +51,24 @@ rm --help
 
 ## `--bypass`
 
-**Purpose:** Let an AI agent (or any non-interactive caller) explicitly
-declare: "I have reviewed this operation and confirm it is safe — proceed."
+**Purpose:** Let an AI agent (or any caller) explicitly declare: "I
+have reviewed this operation and confirm it is safe - proceed."
 
-**Format:** `--bypass=<host>/<platform>/<agent>/<task>` — exactly 4
+**Format:** `--bypass=<platform>/<agent>/<task>` - exactly 3
 slash-separated segments:
 
 | Segment  | Meaning                       | Example                |
 |----------|-------------------------------|------------------------|
-| host     | hostname / machine alias      | `mac-studio`           |
 | platform | agent platform                | `qwenpaw`, `cursor`, `claude-code` |
-| agent    | agent id                      | `ai_research`, `coding` |
+| agent    | agent id or `manual`          | `ai_research`, `coding` |
 | task     | brief task slug               | `cleanup-tmp-dirs`     |
 
 **Validation rules:**
 
-- Exactly 4 segments
+- Exactly 3 segments
 - Each segment matches `[a-zA-Z0-9._-]+`, no empty segments
-- Total length ≥ 12 characters
-- No segment may be a template placeholder (`host`, `platform`, `agent`,
+- Total length ≥ 10 characters
+- No segment may be a template placeholder (`platform`, `agent`,
   `task`, `xxx`, `foo`, `todo`, `changeme`, ...)
 - No angle brackets `<>` or curly braces `{}` (to defeat verbatim
   template copies)
@@ -78,30 +77,33 @@ slash-separated segments:
 
 ```bash
 # ✅ Valid
-rm /tmp/cache --bypass=mac-studio/qwenpaw/ai_research/cleanup-cache
-mv old.txt /Users/x/Documents/new.txt --bypass=laptop/cursor/default/refactor
+rm /tmp/cache --bypass=qwenpaw/ai_research/cleanup-cache
+mv old.txt /Users/x/Documents/new.txt --bypass=cursor/default/refactor
+rm ~/Downloads/old.zip --bypass=manual/haolin/cleanup-downloads
 
 # ❌ Rejected (template copied verbatim)
-rm /tmp/cache --bypass='<host>/<platform>/<agent>/<task>'
-rm /tmp/cache --bypass=host/platform/agent/task
+rm /tmp/cache --bypass='<platform>/<agent>/<task>'
+rm /tmp/cache --bypass=platform/agent/task
 
 # ❌ Rejected (placeholder words / wrong format)
-rm /tmp/cache --bypass=xxx/yyy/zzz/foo
+rm /tmp/cache --bypass=xxx/yyy/zzz
 rm /tmp/cache --bypass=abc/def        # too few segments
 ```
 
-**Relation to `CMDGUARD_NONINTERACTIVE`:**
+**How it works:** When a command targets a **guarded** path and no
+`--bypass` is provided, cmdguard rejects the operation immediately
+and prints guidance showing the expected `--bypass` format. With a
+valid `--bypass`, cmdguard backs up the target files to the vault,
+logs the operation with the full bypass identifier, then executes.
 
-| env only | bypass only | both set |
-|:--------:|:-----------:|:--------:|
-| Immediate rejection (no wait) | Normal interactive confirm; non-interactive callers still need env to avoid hanging | Immediate execution, zero wait |
-
-**Key distinction:** the env var only skips the wait — `--bypass` is the
-**actual permission slip**.
+**Backup failure is always fatal.** If the vault backup fails, the
+operation is aborted (exit 1) regardless of whether the caller is an
+agent or a human. The undo safety net is broken; proceeding without
+rollback capability is irresponsible.
 
 **Audit:** every bypass is recorded. `cmdguard list` shows
-`[bypass:mac-studio/qwenpaw/ai_research/cleanup-cache]` so the audit
-trail attributes the operation back to a specific agent/task.
+`[bypass:qwenpaw/ai_research/cleanup-cache]` so the audit trail
+attributes the operation back to a specific agent/task.
 
 ---
 
@@ -197,7 +199,7 @@ cmdguard vault clean --dry-run    # preview
 ```
 
 Bare `cmdguard vault` (no subcommand) prints a usage block and
-exits 1 — `clean` is destructive enough that it should never be the
+exits 1 - `clean` is destructive enough that it should never be the
 silent default.
 
 ---
@@ -230,8 +232,8 @@ export PATH="$(cmdguard config --bin-dir):$PATH"
 
 ## `cmdguard path`
 
-Print cmdguard's directory layout — config file, log dir, vault
-dir, bin dir — with file counts and sizes.
+Print cmdguard's directory layout - config file, log dir, vault
+dir, bin dir - with file counts and sizes.
 
 ```bash
 cmdguard path

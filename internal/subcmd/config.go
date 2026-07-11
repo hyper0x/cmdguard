@@ -38,7 +38,7 @@ func RunConfig(args []string) {
 	//
 	// so the output is intentionally a bare path with no decoration,
 	// no trailing newline beyond what fmt.Println adds, no logging
-	// tag — anything else would corrupt the resulting PATH.
+	// tag - anything else would corrupt the resulting PATH.
 	//
 	// Mutually exclusive with --default and --raw: those produce
 	// human-oriented multi-line output that's incompatible with
@@ -96,9 +96,10 @@ func printConfig(cfg *config.Config) {
 
 	fmt.Println(msg.ConfigGlobalRules)
 	printProtectLevel(msg.LevelReject, cfg.Protect.Reject)
-	printProtectLevel(msg.LevelConfirmDbl, cfg.Protect.ConfirmDouble)
-	printProtectLevel(msg.LevelConfirm, cfg.Protect.Confirm)
-	printProtectLevel(msg.LevelWarn, cfg.Protect.Warn)
+	// Guarded may include values merged from deprecated confirm_double,
+	// confirm, and warn fields during Load(). Display them all under
+	// the canonical "guarded" label.
+	printProtectLevel(msg.LevelGuarded, cfg.Protect.Guarded)
 
 	if len(cfg.Protect.Command) > 0 {
 		fmt.Println()
@@ -106,9 +107,9 @@ func printConfig(cfg *config.Config) {
 		for cmdName, pc := range cfg.Protect.Command {
 			fmt.Printf("    [%s]\n", cmdName)
 			printProtectLevel(msg.LevelReject, pc.Reject)
-			printProtectLevel(msg.LevelConfirmDbl, pc.ConfirmDouble)
-			printProtectLevel(msg.LevelConfirm, pc.Confirm)
-			printProtectLevel(msg.LevelWarn, pc.Warn)
+			// Merge deprecated fields for display.
+			guarded := config.MergeGuarded(pc)
+			printProtectLevel(msg.LevelGuarded, guarded)
 		}
 	}
 
@@ -116,11 +117,6 @@ func printConfig(cfg *config.Config) {
 	fmt.Println(msg.ConfigVaultSettings)
 	fmt.Printf(msg.ConfigRetentionDays+"\n", cfg.Vault.RetentionDays)
 	fmt.Printf(msg.ConfigAutoPurge+"\n", cfg.Vault.AutoPurge)
-
-	fmt.Println()
-	fmt.Println(msg.ConfigGuardSettings)
-	fmt.Printf(msg.ConfigConfirmTimeout+"\n", cfg.Guard.ConfirmTimeout)
-	fmt.Printf(msg.ConfigConfirmDoubleTimeout+"\n", cfg.Guard.ConfirmDoubleTimeout)
 }
 
 func printProtectLevel(level string, paths []string) {

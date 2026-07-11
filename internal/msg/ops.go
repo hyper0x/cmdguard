@@ -147,8 +147,8 @@ const (
 	UndoNoFilesRestored = TagCmdguard + " no files were restored"
 
 	// UndoUsage is shown when no ID and no piped input.
-	UndoUsage = TagCmdguard + " usage: cmdguard undo --id <ID>"
-	UndoUsagePipe = "        cmdguard list | cmdguard undo"
+	UndoUsage            = TagCmdguard + " usage: cmdguard undo --id <ID>"
+	UndoUsagePipe        = "        cmdguard list | cmdguard undo"
 	UndoUsageInteractive = "        cmdguard undo (interactive)"
 )
 
@@ -266,13 +266,4 @@ const (
 
 	// ConfigAutoPurge is the auto-purge line.
 	ConfigAutoPurge = "    auto_purge: %v"
-
-	// ConfigGuardSettings is the header for [guard] settings.
-	ConfigGuardSettings = "  Guard settings:"
-
-	// ConfigConfirmTimeout is the confirm-timeout line.
-	ConfigConfirmTimeout = "    confirm_timeout: %ds"
-
-	// ConfigConfirmDoubleTimeout is the confirm_double-timeout line.
-	ConfigConfirmDoubleTimeout = "    confirm_double_timeout: %ds"
 )

@@ -1,7 +1,7 @@
 // e2e_test.go runs cmdguard as a real subprocess against an isolated
 // CMDGUARD_CONFIG_DIR. It exercises the full user-visible flow:
 //
-//	init → rm (with --bypass) → list → undo → verify restored
+//	init -> rm (with --bypass) -> list -> undo -> verify restored
 //
 // Why a separate binary build: testing.Main can't simulate alias hijacking
 // or stdin TTY behaviour. A real subprocess with an isolated config dir
@@ -21,20 +21,19 @@ import (
 )
 
 var (
-	binPath  string
-	binOnce  sync.Once
+	binPath     string
+	binOnce     sync.Once
 	errBinBuild error
 )
 
 // safeEnv returns a minimal environment for the subprocess that:
 //   - points CMDGUARD_CONFIG_DIR to the test's isolated directory
 //   - sets a clean PATH with only system dirs (no user cmdguard wrappers)
-//   - sets CMDGUARD_NONINTERACTIVE=1 to avoid TTY detection flakiness
+//   - stdin is /dev/null (non-interactive, no TTY)
 func safeEnv(configDir string) []string {
 	return []string{
 		"PATH=/bin:/usr/bin:/usr/sbin:/sbin:/usr/local/bin",
 		"CMDGUARD_CONFIG_DIR=" + configDir,
-		"CMDGUARD_NONINTERACTIVE=1",
 		"HOME=" + filepath.Dir(configDir),
 	}
 }
@@ -62,7 +61,7 @@ func buildOnce(t *testing.T) string {
 }
 
 // run executes the cmdguard binary inside the given isolated config dir
-// with a clean PATH and CMDGUARD_NONINTERACTIVE=1.
+// with a clean PATH and non-interactive stdin.
 func run(t *testing.T, configDir string, args ...string) (stdout, stderr string, exitCode int) {
 	t.Helper()
 	cmd := exec.Command(binPath, args...)
@@ -89,14 +88,14 @@ func run(t *testing.T, configDir string, args ...string) (stdout, stderr string,
 // TestE2E_FullFlow runs the end-to-end happy path that an AI agent
 // would follow:
 //
-//  1. cmdguard init             → populate config + bin + dirs
-//  2. Write config with confirm rule for ~/playground/**
+//  1. cmdguard init             -> populate config + bin + dirs
+//  2. Write config with guarded rule for ~/playground/**
 //  3. Create a file under that path
 //  4. cmdguard rm <file> --bypass=<id>
-//     → must succeed (bypass forces allow, log gets bypass field)
+//     -> must succeed (bypass forces allow, log gets bypass field)
 //  5. Verify file is gone, log contains bypass identifier
-//  6. cmdguard list --json      → find the entry
-//  7. cmdguard undo --id <id>   → must restore the file
+//  6. cmdguard list --json      -> find the entry
+//  7. cmdguard undo --id <id>   -> must restore the file
 //  8. Verify file is back with original content
 func TestE2E_FullFlow(t *testing.T) {
 	buildOnce(t)
@@ -116,22 +115,16 @@ func TestE2E_FullFlow(t *testing.T) {
 		t.Fatalf("config.toml not created: %v", err)
 	}
 
-	// 2. Write a config with explicit empty reject/double/warn lists.
+	// 2. Write a config with explicit empty reject list.
 	//    Without "reject = []" the TOML decoder merges with DefaultConfig
-	//    (which includes /var/** — macOS TempDir lives under /var).
+	//    (which includes /var/** - macOS TempDir lives under /var).
 	cfg := `[protect]
 reject = []
-confirm_double = []
-confirm = ["` + playground + `/**"]
-warn = []
+guarded = ["` + playground + `/**"]
 
 [vault]
 retention_days = 7
 auto_purge = true
-
-[guard]
-confirm_timeout = 5
-confirm_double_timeout = 10
 `
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -147,9 +140,8 @@ confirm_double_timeout = 10
 		t.Fatalf("write target: %v", err)
 	}
 
-	// 4. rm with bypass (CMDGUARD_NONINTERACTIVE=1 is set by safeEnv,
-	//    and bypass provides the permission to proceed).
-	bypassID := "ci-host/e2e-test/cmdguard/full-flow"
+	// 4. rm with bypass (non-interactive mode + valid --bypass).
+	bypassID := "e2e-test/cmdguard/full-flow"
 	out, errOut, code = run(t, configDir, "rm", target, "--bypass="+bypassID)
 	if code != 0 {
 		t.Fatalf("rm --bypass failed (code=%d):\nstdout=%s\nstderr=%s", code, out, errOut)
@@ -174,7 +166,7 @@ confirm_double_timeout = 10
 		t.Errorf("log file missing bypass identifier %q:\n%s", bypassID, logRaw)
 	}
 
-	// 6. list --json → parse and find our entry's id
+	// 6. list --json -> parse and find our entry's id
 	out, errOut, code = run(t, configDir, "list", "--json")
 	if code != 0 {
 		t.Fatalf("list --json failed (code=%d):\nstderr=%s", code, errOut)
@@ -218,11 +210,11 @@ confirm_double_timeout = 10
 	}
 }
 
-// TestE2E_NonInteractiveRejection verifies that without --bypass,
-// cmdguard refuses (fast, no hang) and gives the agent the bypass
-// guidance in stderr. With CMDGUARD_NONINTERACTIVE=1 it must be
-// immediate (0-delay).
-func TestE2E_NonInteractiveRejection(t *testing.T) {
+// TestE2E_NoBypassRejection verifies that without --bypass,
+// cmdguard refuses (fast, no hang) and gives the bypass
+// guidance in stderr. The rejection must be immediate (no interactive
+// wait) because cmdguard is non-interactive by design.
+func TestE2E_NoBypassRejection(t *testing.T) {
 	buildOnce(t)
 
 	configDir := filepath.Join(t.TempDir(), ".cmdguard")
@@ -236,17 +228,11 @@ func TestE2E_NonInteractiveRejection(t *testing.T) {
 	cfgPath := filepath.Join(configDir, "config.toml")
 	cfg := `[protect]
 reject = []
-confirm_double = []
-confirm = ["` + playground + `/**"]
-warn = []
+guarded = ["` + playground + `/**"]
 
 [vault]
 retention_days = 7
 auto_purge = true
-
-[guard]
-confirm_timeout = 5
-confirm_double_timeout = 10
 `
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -256,7 +242,7 @@ confirm_double_timeout = 10
 	target := filepath.Join(playground, "x.txt")
 	_ = os.WriteFile(target, []byte("data"), 0o644)
 
-	// Run WITHOUT --bypass, WITH CMDGUARD_NONINTERACTIVE=1
+	// Run WITHOUT --bypass (non-interactive).
 	cmd := exec.Command(binPath, "rm", target)
 	cmd.Env = safeEnv(configDir)
 	cmd.Stdin = bytes.NewReader(nil)

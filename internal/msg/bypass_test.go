@@ -11,54 +11,53 @@ func TestValidateBypass(t *testing.T) {
 		wantOK  bool
 		comment string
 	}{
-		// Valid
-		{"mac-studio/qwenpaw/ai_research/cleanup-tmp-dirs", true, "standard 4-segment"},
-		{"laptop-air/claude-code/default/refactor", true, "4-segment with dots and hyphens"},
-		{"abc/qwen/coding/cleanup", true, "short but valid (no placeholders, 4 segments)"},
+		// Valid (3 segments)
+		{"qwenpaw/ai_research/cleanup-tmp-dirs", true, "standard 3-segment"},
+		{"claude-code/default/refactor-tests", true, "3-segment with dots and hyphens"},
+		{"manual/haolin/remove-old-logs", true, "human caller"},
+		{"qwen/coding/cleanup", true, "short but valid (3 segments, >= 10 chars)"},
 
 		// Invalid: too short
-		{"a/b/c/d", false, "only 7 chars, < 12"},
+		{"a/b/c", false, "only 5 chars, < 10"},
 
 		// Invalid: wrong segment count
 		{"mac/qwen/ai/task/extra", false, "5 segments"},
-		{"mac/qwen/ai", false, "3 segments"},
+		{"mac-studio/qwenpaw/ai_research/cleanup-tmp-dirs", false, "4 segments (old format)"},
 		{"mac/qwen/ai/", false, "trailing slash = 4th empty segment"},
-		{"mac/qwen/ai/task/", false, "trailing slash = 5th empty segment"},
 
 		// Invalid: bad characters in segments
-		{"mac studio/qwenpaw/ai_research/cleanup", false, "space in first segment"},
-		{"mac/中文/agent/task", false, "Chinese characters"},
-		{"mac/qwenpaw/ai_research/task!", false, "exclamation mark"},
+		{"mac studio/qwenpaw/cleanup", false, "space in first segment"},
+		{"qwenpaw/中文/cleanup", false, "Chinese characters"},
+		{"qwenpaw/ai_research/task!", false, "exclamation mark"},
 
 		// Invalid: empty segment
-		{"mac//ai_research/cleanup", false, "empty second segment"},
-		{"/qwenpaw/ai_research/task", false, "leading slash = empty first segment"},
+		{"qwenpaw//cleanup", false, "empty second segment"},
+		{"/qwenpaw/cleanup", false, "leading slash = empty first segment"},
 
 		// Invalid: literal template placeholders copied from help
-		{"<host>/<platform>/<agent>/<task>", false, "template copied verbatim"},
-		{"host/platform/agent/task", false, "all-placeholder words"},
-		{"mac-studio/qwenpaw/ai_research/task", false, "trailing 'task' placeholder"},
-		{"mac-studio/qwenpaw/agent/cleanup", false, "'agent' placeholder"},
-		{"host/qwenpaw/ai_research/cleanup", false, "'host' placeholder"},
-		{"mac/platform/ai/cleanup-tmp", false, "'platform' placeholder"},
-		{"xxx/yyy/zzz/foo-bar", false, "trivial placeholder values"},
-		{"mac-studio/qwenpaw/ai_research/todo", false, "'todo' as task"},
-		{"mac-studio/qwenpaw/ai_research/changeme", false, "'changeme'"},
-		{"mac-studio/{platform}/ai_research/x", false, "curly braces"},
+		{"<platform>/<agent>/<task>", false, "template copied verbatim"},
+		{"platform/agent/task", false, "all-placeholder words"},
+		{"qwenpaw/ai_research/task", false, "trailing 'task' placeholder"},
+		{"qwenpaw/agent/cleanup", false, "'agent' placeholder"},
+		{"platform/ai/cleanup-tmp", false, "'platform' placeholder"},
+		{"xxx/yyy/zzz", false, "trivial placeholder values"},
+		{"qwenpaw/ai_research/todo", false, "'todo' as task"},
+		{"qwenpaw/ai_research/changeme", false, "'changeme'"},
+		{"qwenpaw/{platform}/x", false, "curly braces"},
 		// Newly-added dummy tokens: these are extremely common AI-agent
 		// fillers that must not pollute the audit trail.
-		{"test/test/test/test", false, "all-'test' filler"},
-		{"mac-studio/qwenpaw/ai_research/test", false, "trailing 'test' placeholder"},
-		{"mac-studio/qwenpaw/ai_research/demo", false, "'demo' as task"},
-		{"dummy/qwenpaw/ai_research/cleanup", false, "'dummy' as host"},
-		{"mac-studio/fake/ai_research/cleanup", false, "'fake' as platform"},
-		{"mac-studio/qwenpaw/temp/cleanup", false, "'temp' as agent"},
+		{"test/test/test", false, "all-'test' filler"},
+		{"qwenpaw/ai_research/test", false, "trailing 'test' placeholder"},
+		{"qwenpaw/ai_research/demo", false, "'demo' as task"},
+		{"dummy/qwenpaw/cleanup", false, "'dummy' as platform"},
+		{"qwenpaw/fake/cleanup", false, "'fake' as agent"},
+		{"qwenpaw/temp/cleanup", false, "'temp' as agent"},
 
 		// Valid: real values that *contain* placeholder words but are not equal to them
-		{"mac-host/qwen-platform/ai_agent/cleanup-task", true, "words appear inside segments but not equal"},
-		{"agent_research/qwenpaw/ai_research/cleanup", true, "'agent_research' is a real ID, not 'agent'"},
-		{"test-host/qwenpaw/ai_research/cleanup", true, "'test-host' contains 'test' but isn't equal"},
-		{"mac-studio/qwenpaw/ai_research/test-cleanup", true, "'test-cleanup' contains 'test' but isn't equal"},
+		{"qwen-platform/ai_agent/cleanup-task", true, "words appear inside segments but not equal"},
+		{"qwenpaw/ai_research/cleanup", true, "'ai_research' is a real ID, not 'agent'"},
+		{"qwenpaw/test-host/cleanup", true, "'test-host' contains 'test' but isn't equal"},
+		{"qwenpaw/ai_research/test-cleanup", true, "'test-cleanup' contains 'test' but isn't equal"},
 	}
 
 	for _, tt := range tests {
@@ -72,26 +71,25 @@ func TestValidateBypass(t *testing.T) {
 // FuzzValidateBypass generates random inputs to ensure ValidateBypass:
 //  1. Never panics
 //  2. For any "valid" id, the id genuinely satisfies the documented
-//     format contract (4 segments of safe chars, no placeholders,
-//     no template syntax, length >= 12).
+//     format contract (3 segments of safe chars, no placeholders,
+//     no template syntax, length >= 10).
 //
 // Run with:
 //
 //	go test -fuzz=FuzzValidateBypass -fuzztime=30s ./internal/msg/
 func FuzzValidateBypass(f *testing.F) {
 	seeds := []string{
-		"mac-studio/qwenpaw/ai_research/cleanup-cache",
-		"<host>/<platform>/<agent>/<task>",
-		"host/platform/agent/task",
+		"qwenpaw/ai_research/cleanup-cache",
+		"<platform>/<agent>/<task>",
+		"platform/agent/task",
 		"",
-		"a/b/c/d",
 		"a/b/c",
-		"a//b/c",
-		"agent_research/qwenpaw/ai_research/cleanup",
+		"a//b",
+		"ai_research/qwenpaw/cleanup",
 		"mac/qwen/ai/task/extra",
-		"xxx/yyy/zzz/foo",
-		"a/b/c/dddddddddddddddddd",
-		"a/{b}/c/d",
+		"xxx/yyy/zzz",
+		"a/b/ccccc",
+		"a/{b}/c",
 	}
 	for _, s := range seeds {
 		f.Add(s)
@@ -107,15 +105,15 @@ func FuzzValidateBypass(f *testing.F) {
 
 		// Property 2: anything ValidateBypass approves must satisfy the
 		// documented format contract.
-		if len(id) < 12 {
-			t.Errorf("approved id %q is shorter than 12 chars", id)
+		if len(id) < 10 {
+			t.Errorf("approved id %q is shorter than 10 chars", id)
 		}
 		if strings.ContainsAny(id, "<>{}") {
 			t.Errorf("approved id %q contains template syntax", id)
 		}
 		parts := strings.Split(id, "/")
-		if len(parts) != 4 {
-			t.Errorf("approved id %q has %d segments, want 4", id, len(parts))
+		if len(parts) != 3 {
+			t.Errorf("approved id %q has %d segments, want 3", id, len(parts))
 		}
 		for _, p := range parts {
 			if p == "" {

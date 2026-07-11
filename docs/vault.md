@@ -1,17 +1,17 @@
 # Vault & undo
 
-cmdguard maintains its own vault — it does NOT rely on the OS trash.
+cmdguard maintains its own vault - it does NOT rely on the OS trash.
 
 ## How it works
 
-1. For `confirm` / `confirm_double` / `warn` operations, target files
+1. For `guarded` operations with a valid `--bypass`, target files
    are copied to the vault **before** the underlying command runs.
 2. Backup directory: `~/.cmdguard/vault/<timestamp>_<id>/`
 3. The backup is a full copy of the original file plus metadata.
 4. After the original command succeeds, the vault copy is the source
    of truth for `cmdguard undo`.
-5. `reject`ed operations never write to the vault (nothing happened),
-   but they DO get a log entry.
+5. `reject`ed operations are logged but never write to the vault
+   (nothing happened, nothing to back up).
 
 ## Why not the OS trash?
 
@@ -49,7 +49,7 @@ cmdguard undo --interactive
 # Preview
 cmdguard undo --id abc12345 --dry-run
 
-# Pipeline (list → undo)
+# Pipeline (list -> undo)
 cmdguard list --json | cmdguard undo
 ```
 
@@ -64,7 +64,7 @@ cmdguard list --json | cmdguard undo
 ## Audit log
 
 Every operation that goes through cmdguard is logged to
-`~/.cmdguard/log/` — including rejected, allowed, bypassed, undo
+`~/.cmdguard/log/` - including rejected, allowed, bypassed, undo
 itself, and vault-clean events.
 
 - Format: JSON Lines, one file per day (`YYYY-MM-DD.jsonl`)
@@ -77,12 +77,19 @@ itself, and vault-clean events.
   "id": "abc123456789",
   "timestamp": "2026-06-06T12:00:00+08:00",
   "command": "rm",
-  "action": "confirm",
+  "action": "guarded",
   "targets": "/Users/x/Documents/old.txt",
   "rule": "/Users/x/Documents/**",
   "message": "path matches protection rule '/Users/x/Documents/**'",
-  "bypass": "mac-studio/qwenpaw/ai_research/cleanup-cache"
+  "bypass": "qwenpaw/ai_research/cleanup-cache"
 }
 ```
 
 The `bypass` field attributes the operation to a specific agent and task.
+
+### Legacy log entries
+
+Log entries created by pre-v0.14 versions may contain `action` values
+of `confirm`, `confirm_double`, or `warn`. These remain readable by
+`cmdguard list` and `cmdguard undo`. The legacy constants are retained
+for backward compatibility.

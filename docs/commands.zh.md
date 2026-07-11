@@ -22,14 +22,14 @@ rm -rf ~/Downloads/temp
 | `--verbose` | 显示详细执行信息（匹配规则、备份路径、实际命令等） |
 | `--version` | 显示 cmdguard 版本信息，同时尝试显示底层命令版本（GNU 工具有效，BSD 静默跳过） |
 | `--help` | 显示 cmdguard 帮助（含保护级别说明），同时尝试显示底层命令帮助 |
-| `--bypass=<id>` | 强制放行受保护路径（智能体场景，见下方 [`--bypass`](#--bypass) 章节） |
+| `--bypass=<id>` | 强制放行 guarded 路径（见下方 [`--bypass`](#--bypass) 章节） |
 
 ### 示例
 
 ```bash
 # 验证 alias 是否生效
 rm --check
-# 输出: [cmdguard] guard active — rm is running through cmdguard
+# 输出: [cmdguard] guard active - rm is running through cmdguard
 
 # 查看版本（同时显示 cmdguard 和底层 rm 版本）
 rm --version
@@ -51,50 +51,49 @@ rm --help
 
 ## `--bypass`
 
-**用途：** AI 智能体在非交互场景下，主动声明"这次操作我已审视过，请放行"。
+**用途：** 调用方（AI 智能体或人类）主动声明"这次操作我已审视过，请放行"。
 
-**格式：** `--bypass=<host>/<platform>/<agent>/<task>` — 必须 4 段路径形式：
+**格式：** `--bypass=<platform>/<agent>/<task>` - 必须 3 段路径形式：
 
-| 段名     | 含义                  | 示例                   |
-|----------|-----------------------|------------------------|
-| host     | 主机名/机器别名       | `mac-studio`           |
-| platform | 智能体平台            | `qwenpaw`, `cursor`, `claude-code` |
-| agent    | 智能体 ID             | `ai_research`, `coding` |
-| task     | 任务简称              | `cleanup-tmp-dirs`     |
+| 段名     | 含义                      | 示例                   |
+|----------|---------------------------|------------------------|
+| platform | 智能体平台                | `qwenpaw`, `cursor`, `claude-code` |
+| agent    | 智能体 ID 或 `manual`     | `ai_research`, `coding` |
+| task     | 任务简称                  | `cleanup-tmp-dirs`     |
 
 **校验规则：**
 
-- 恰好 4 段，`/` 分隔
+- 恰好 3 段，`/` 分隔
 - 每段匹配 `[a-zA-Z0-9._-]+`，不允许空段
-- 总长度 ≥ 12 字符
-- 段不能是模板占位词（`host`、`platform`、`agent`、`task`、`xxx`、`foo`、`todo` 等）
+- 总长度 ≥ 10 字符
+- 段不能是模板占位词（`platform`、`agent`、`task`、`xxx`、`foo`、`todo` 等）
 - 不允许角括号 `<>` 或花括号 `{}`（防止直接复制模板）
 
 **示例：**
 
 ```bash
 # ✅ 正确
-rm /tmp/cache --bypass=mac-studio/qwenpaw/ai_research/cleanup-cache
-mv old.txt /Users/x/Documents/new.txt --bypass=laptop/cursor/default/refactor
+rm /tmp/cache --bypass=qwenpaw/ai_research/cleanup-cache
+mv old.txt /Users/x/Documents/new.txt --bypass=cursor/default/refactor
+rm ~/Downloads/old.zip --bypass=manual/haolin/cleanup-downloads
 
 # ❌ 被拒（直接复制模板）
-rm /tmp/cache --bypass='<host>/<platform>/<agent>/<task>'
-rm /tmp/cache --bypass=host/platform/agent/task
+rm /tmp/cache --bypass='<platform>/<agent>/<task>'
+rm /tmp/cache --bypass=platform/agent/task
 
 # ❌ 被拒（占位词/格式不合规）
-rm /tmp/cache --bypass=xxx/yyy/zzz/foo
-rm /tmp/cache --bypass=abc/def        # 段不足 4
+rm /tmp/cache --bypass=xxx/yyy/zzz
+rm /tmp/cache --bypass=abc/def        # 段不足 3
 ```
 
-**和 `CMDGUARD_NONINTERACTIVE` 的关系：**
+**工作方式：** 当命令目标命中 **guarded** 路径且未提供 `--bypass` 时，cmdguard
+立即拒绝操作并打印期望的 `--bypass` 格式引导。提供有效 `--bypass` 后，cmdguard
+将目标文件备份到 vault，记录操作日志（含完整 bypass 标识），然后执行。
 
-| 仅 env | 仅 bypass | 同时设置 |
-|:------:|:--------:|:--------:|
-| 立即拒绝（不挂等待）| 真人终端正常确认；非交互场景需要 env 才不挂 | 立即放行，无等待 |
+**备份失败始终致命。** 如果 vault 备份失败，操作中止（exit 1），无论调用方是
+智能体还是人类。undo 安全网已断，没有回滚能力就不应继续执行。
 
-**核心区别：** env 只跳过等待，**bypass 才是真正的放行通行证**。
-
-**审计：** 每次 bypass 都记入日志，`cmdguard list` 显示 `[bypass:mac-studio/qwenpaw/ai_research/cleanup-cache]` 标签，可追溯到具体智能体/任务。
+**审计：** 每次 bypass 都记入日志，`cmdguard list` 显示 `[bypass:qwenpaw/ai_research/cleanup-cache]` 标签，可追溯到具体智能体/任务。
 
 ---
 
@@ -188,7 +187,7 @@ cmdguard vault clean              # 清理过期备份
 cmdguard vault clean --dry-run    # 预览
 ```
 
-直接执行 `cmdguard vault`（不带子命令）会打印用法并以 exit 1 退出 ——
+直接执行 `cmdguard vault`（不带子命令）会打印用法并以 exit 1 退出 --
 `clean` 属于破坏性操作，不应被静默作为默认行为。
 
 ---
@@ -221,7 +220,7 @@ export PATH="$(cmdguard config --bin-dir):$PATH"
 
 ## `cmdguard path`
 
-展示 cmdguard 的目录结构 —— 配置文件、日志目录、vault 目录、bin 目录，
+展示 cmdguard 的目录结构 -- 配置文件、日志目录、vault 目录、bin 目录，
 并附带文件数量和大小。
 
 ```bash

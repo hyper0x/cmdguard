@@ -2,7 +2,7 @@
 
 # cmdguard
 
-**命令防护工具** — 为 `rm`、`mv`、`chmod` 提供安全防护、自动备份和操作撤销。
+**命令防护工具** - 为 `rm`、`mv`、`chmod` 提供路径规则防护、自动备份和操作撤销。
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/hyper0x/cmdguard)](https://goreportcard.com/report/github.com/hyper0x/cmdguard)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -17,12 +17,12 @@
 
 cmdguard 包装危险命令（`rm`、`mv`、`chmod`），防止误操作导致数据丢失。
 
-- 🚫 **四级防护** — reject、confirm_double、confirm、warn
-- 💾 **自动备份** — 危险操作前自动备份到 vault
-- ↩️ **操作撤销** — 通过 `cmdguard undo` 恢复被删除/覆盖的文件
-- 📋 **审计日志** — 所有操作永久记录，支持搜索过滤
-- 🤖 **智能体感知** — 对 AI 智能体和自动化场景有专门处理（见下）
-- ⚙️ **TOML 配置** — 支持 glob 路径模式、命令级覆盖
+- 🚫 **三级防护** - reject、guarded、allow
+- 💾 **自动备份** - 危险操作前自动备份到 vault
+- ↩️ **操作撤销** - 通过 `cmdguard undo` 恢复被删除/覆盖的文件
+- 📋 **审计日志** - 所有操作永久记录，支持搜索过滤
+- 🔑 **Bypass 审计** - guarded 路径可通过 `--bypass` 标识执行，标识永久记入审计日志
+- ⚙️ **TOML 配置** - 支持 glob 路径模式、命令级覆盖
 
 ---
 
@@ -44,7 +44,6 @@ alias chmod='cmdguard chmod'
 
 ```bash
 export PATH="$(cmdguard config --bin-dir):$PATH"
-export CMDGUARD_NONINTERACTIVE=1   # 跳过 5/10 秒等待
 ```
 
 `cmdguard config --bin-dir` 会以裸路径形式打印 wrapper 目录（默认 `~/.cmdguard/bin`，
@@ -58,30 +57,23 @@ export CMDGUARD_NONINTERACTIVE=1   # 跳过 5/10 秒等待
 
 ---
 
-## AI 智能体使用方式
+## Bypass 标识
 
-智能体调用受保护路径时，cmdguard 拒绝挂起等待交互。智能体需要：
+当命令目标命中 **guarded** 路径时，cmdguard 拒绝执行，除非调用方提供 `--bypass` 标识：
 
-1. **设置环境变量** 声明自己处于非交互模式：
-   ```bash
-   export CMDGUARD_NONINTERACTIVE=1
-   ```
-   这会跳过 5/10 秒的等待。**但不等于放行** —— 操作仍然会被拒绝。
+```bash
+rm /path/to/file --bypass=<platform>/<agent>/<task>
+```
 
-2. **如果操作确实安全**，附加 `--bypass` 标识：
-   ```bash
-   rm /path/to/file --bypass=<host>/<platform>/<agent>/<task>
-   ```
-   标识必须恰好包含 4 段：
+标识必须恰好包含 3 段：
 
-   | 段名     | 含义                  | 示例                   |
-   |----------|-----------------------|------------------------|
-   | host     | 主机名/机器别名       | `mac-studio`           |
-   | platform | 智能体平台            | `qwenpaw`, `cursor`    |
-   | agent    | 智能体 ID             | `ai_research`          |
-   | task     | 任务简称              | `cleanup-tmp-dirs`     |
+| 段名     | 含义                      | 示例                   |
+|----------|---------------------------|------------------------|
+| platform | 智能体平台                | `qwenpaw`, `cursor`    |
+| agent    | 智能体 ID 或 `manual`     | `ai_research`          |
+| task     | 任务简称                  | `cleanup-tmp-dirs`     |
 
-   允许字符：`[a-zA-Z0-9._-]`。空段、角括号、模板占位词（`host`、`agent`、`task`、`xxx`、`foo`、`todo` 等）会被拒绝。
+允许字符：`[a-zA-Z0-9._-]`。空段、角括号、模板占位词（`agent`、`task`、`xxx`、`foo`、`todo` 等）会被拒绝。
 
 每次 bypass 都记入审计日志，便于追溯到具体智能体/任务。
 
@@ -137,18 +129,12 @@ cmdguard init
 
 ```toml
 [protect]
-reject         = ["/etc/**", "/private/**", "~/.ssh/**"]
-confirm_double = ["~/.config/**"]
-confirm        = ["~/Documents/**", "~/Desktop/**"]
-warn           = ["~/Downloads/**"]
+reject  = ["/etc/**", "/private/**", "~/.ssh/**"]
+guarded = ["~/.config/**", "~/Documents/**", "~/Desktop/**"]
 
 [vault]
 retention_days = 7
 auto_purge     = true
-
-[guard]
-confirm_timeout        = 5    # 单确认等待秒数
-confirm_double_timeout = 10   # 双确认每步等待秒数
 ```
 
 > **配置文件对 cmdguard 是只读的**。cmdguard 运行时不会修改它；只有 `cmdguard init --force` 才会覆盖（自动备份为 zip）。
@@ -184,14 +170,11 @@ make install  # 安装到 $GOBIN
 **能否绕过 cmdguard？**
 能。`/bin/rm /etc/passwd` 跳过 PATH 查找。cmdguard 是"防护 + 审计 + 可恢复"，不是"绝对拦截"。
 
-**`confirm` 和 `confirm_double` 有什么区别？**
-`confirm` 单次按 `y` 即可。`confirm_double` 先按 `y`，再完整输入 `yes`，专门防止疲劳误按。
+**`reject` 和 `guarded` 有什么区别？**
+`reject` 始终拒绝，即使带 `--bypass` 也不执行。`guarded` 不带 `--bypass` 时拒绝，带有效 `--bypass` 标识时备份后执行。
 
 **配置文件被覆盖怎么办？**
 `cmdguard init` 不带 `--force` 不会覆盖。带 `--force` 时旧文件打包到 `~/.cmdguard/backup/init-<时间戳>.zip`。
-
-**`CMDGUARD_NONINTERACTIVE` 智能体应该在哪里设？**
-在智能体的 shell 启动脚本或环境配置里。设置后该环境下所有 cmdguard 调用都会跳过等待，直接走拒绝/bypass 分支。
 
 **如何卸载？**
 ```bash
