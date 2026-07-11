@@ -11,7 +11,7 @@
 // │                                                                     │
 // │     Rationale: the config encodes the operator's safety policy.     │
 // │     If cmdguard silently "fixed" or pruned entries (e.g. removing   │
-// │     non-existent paths), it would erode the trust contract — the    │
+// │     non-existent paths), it would erode the trust contract - the    │
 // │     user can no longer be sure the active policy matches what they  │
 // │     wrote. Any reconciliation between policy and reality belongs    │
 // │     in the operator's hands, not in the guard.                      │
@@ -31,10 +31,21 @@ import (
 type PathProtectLevel string
 
 const (
-	LevelReject         PathProtectLevel = "reject"
-	LevelConfirmDouble  PathProtectLevel = "confirm_double"
-	LevelConfirm        PathProtectLevel = "confirm"
-	LevelWarn           PathProtectLevel = "warn"
+	// LevelReject means the path is permanently off-limits.
+	// No --bypass can override it. The operation is refused and logged.
+	LevelReject PathProtectLevel = "reject"
+
+	// LevelGuarded means the path requires a valid --bypass to proceed.
+	// Without --bypass: rejected + logged.
+	// With valid --bypass: backup -> log -> execute.
+	LevelGuarded PathProtectLevel = "guarded"
+
+	// Legacy levels -- no longer produced by the guard flow, but kept
+	// so that old log entries and old config files remain readable.
+	// In flattenProtect, all three are mapped to LevelGuarded.
+	LevelConfirmDouble PathProtectLevel = "confirm_double"
+	LevelConfirm       PathProtectLevel = "confirm"
+	LevelWarn          PathProtectLevel = "warn"
 )
 
 // PathRule represents a path protection rule.
@@ -45,12 +56,18 @@ type PathRule struct {
 
 // ProtectConfig holds path lists grouped by protection level,
 // plus per-command overrides.
+//
+// Guarded is the canonical field for the new 3-level model.
+// ConfirmDouble, Confirm, and Warn are retained for backward
+// compatibility with existing config files; their values are merged
+// into Guarded during Load().
 type ProtectConfig struct {
-	Reject         []string                   `toml:"reject"`
-	ConfirmDouble  []string                   `toml:"confirm_double"`
-	Confirm        []string                   `toml:"confirm"`
-	Warn           []string                   `toml:"warn"`
-	Command        map[string]ProtectConfig   `toml:"command"`
+	Reject        []string                 `toml:"reject"`
+	Guarded       []string                 `toml:"guarded"`
+	ConfirmDouble []string                 `toml:"confirm_double"` // deprecated -> guarded
+	Confirm       []string                 `toml:"confirm"`        // deprecated -> guarded
+	Warn          []string                 `toml:"warn"`           // deprecated -> guarded
+	Command       map[string]ProtectConfig `toml:"command"`
 }
 
 // VaultConfig holds vault settings.
@@ -59,31 +76,10 @@ type VaultConfig struct {
 	AutoPurge     bool `toml:"auto_purge"`
 }
 
-// GuardConfig holds interactive-prompt settings for protected paths.
-//
-// Both timeouts use 0 to mean "disable timeout, wait forever". Setting
-// 0 is only sensible on personal machines where you trust that no
-// automation will ever hit a confirm-level path — otherwise a forgotten
-// agent invocation could hang indefinitely.
-type GuardConfig struct {
-	// ConfirmTimeout is the seconds to wait at a single 'confirm'
-	// prompt before falling back to non-interactive rejection.
-	// 0 disables the timeout.
-	ConfirmTimeout int `toml:"confirm_timeout"`
-
-	// ConfirmDoubleTimeout is the seconds to wait at EACH step of a
-	// 'confirm_double' prompt (both the 'y' step and the 'yes' step).
-	// 0 disables the timeout. Defaults higher than ConfirmTimeout
-	// because confirm_double paths are by definition more dangerous
-	// and deserve more deliberation time.
-	ConfirmDoubleTimeout int `toml:"confirm_double_timeout"`
-}
-
 // Config is the top-level configuration.
 type Config struct {
 	Protect ProtectConfig `toml:"protect"`
 	Vault   VaultConfig   `toml:"vault"`
-	Guard   GuardConfig   `toml:"guard"`
 }
 
 // DefaultConfig returns a config with sensible defaults.
@@ -114,13 +110,13 @@ func DefaultConfig() *Config {
 				"*.p12",
 				"*.pfx",
 				"*.asc",
-				// Home directory critical config — non-recoverable, directly rejected
+				// Home directory critical config - non-recoverable, directly rejected
 				"~/.ssh/**",
 				"~/.gnupg/**",
 				"~/.aws/**",
 			},
-			ConfirmDouble: []string{
-				// Home directory app data — cleanable but requires double confirmation
+			Guarded: []string{
+				// Home directory app data - cleanable but requires --bypass
 				"~/.config/**",
 				"~/.local/share/**",
 			},
@@ -129,10 +125,6 @@ func DefaultConfig() *Config {
 		Vault: VaultConfig{
 			RetentionDays: 7,
 			AutoPurge:     true,
-		},
-		Guard: GuardConfig{
-			ConfirmTimeout:       5,
-			ConfirmDoubleTimeout: 10,
 		},
 	}
 }
@@ -153,8 +145,8 @@ func ConfigPath() string {
 
 // BinDir returns the directory holding cmdguard wrapper scripts
 // (rm/mv/chmod). Currently a child of ConfigDir, but exposed as its
-// own function so callers — including the public `cmdguard config
-// --bin-dir` command — don't bake the layout into themselves. If the
+// own function so callers - including the public `cmdguard config
+// --bin-dir` command - don't bake the layout into themselves. If the
 // wrapper location ever moves (e.g. to /usr/local/libexec/cmdguard
 // for a system-wide install), callers using BinDir() pick up the
 // change for free.
@@ -165,15 +157,16 @@ func BinDir() string {
 // Load loads configuration from the config file.
 //
 // Behaviour:
-//   - No config file exists → returns DefaultConfig() (built-in defaults).
-//   - Config file exists but has no [protect] section → uses DefaultConfig()
-//     for protection rules; vault/guard values come from the file if present.
-//   - Config file exists with [protect] section → the file's Protect rules
+//   - No config file exists -> returns DefaultConfig() (built-in defaults).
+//   - Config file exists but has no [protect] section -> uses DefaultConfig()
+//     for protection rules; vault values come from the file if present.
+//   - Config file exists with [protect] section -> the file's Protect rules
 //     are the single source of truth; defaults are NOT merged. This means
 //     if you write `reject = []` explicitly, no reject rules apply at all.
 //
-// Vault and Guard use field-level merge: only the specific keys written
-// in the file override the defaults; omitted keys keep their default values.
+// Backward compatibility: the deprecated fields confirm_double, confirm,
+// and warn are merged into guarded during Load, so old config files
+// continue to work without modification.
 func Load() (*Config, error) {
 	path := ConfigPath()
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -192,16 +185,19 @@ func Load() (*Config, error) {
 
 	// If the file defines any [protect] key, use the file's Protect as-is.
 	// Otherwise fall back to defaults (so a minimal file that only sets
-	// [vault] or [guard] still gets the built-in protect rules).
+	// [vault] still gets the built-in protect rules).
 	if meta.IsDefined("protect", "reject") ||
+		meta.IsDefined("protect", "guarded") ||
 		meta.IsDefined("protect", "confirm_double") ||
 		meta.IsDefined("protect", "confirm") ||
 		meta.IsDefined("protect", "warn") ||
 		meta.IsDefined("protect", "command") {
+		// Merge deprecated fields into Guarded for backward compat.
+		fileCfg.Protect.Guarded = MergeGuarded(fileCfg.Protect)
 		cfg.Protect = fileCfg.Protect
 	}
 
-	// Vault and Guard use field-level merge: only override the specific
+	// Vault uses field-level merge: only override the specific
 	// keys the file actually defines, so omitted fields keep their defaults.
 	if meta.IsDefined("vault", "retention_days") {
 		cfg.Vault.RetentionDays = fileCfg.Vault.RetentionDays
@@ -209,14 +205,24 @@ func Load() (*Config, error) {
 	if meta.IsDefined("vault", "auto_purge") {
 		cfg.Vault.AutoPurge = fileCfg.Vault.AutoPurge
 	}
-	if meta.IsDefined("guard", "confirm_timeout") {
-		cfg.Guard.ConfirmTimeout = fileCfg.Guard.ConfirmTimeout
-	}
-	if meta.IsDefined("guard", "confirm_double_timeout") {
-		cfg.Guard.ConfirmDoubleTimeout = fileCfg.Guard.ConfirmDoubleTimeout
-	}
 
 	return cfg, nil
+}
+
+// MergeGuarded combines the Guarded, ConfirmDouble, Confirm, and Warn
+// slices into a single slice. This provides backward compatibility:
+// old config files that use confirm_double/confirm/warn get those
+// entries treated as guarded without requiring a config migration.
+// Exported so that subcmd/config.go can merge per-command overrides
+// for display.
+func MergeGuarded(p ProtectConfig) []string {
+	// Preallocate: sum of all source slices.
+	result := make([]string, 0, len(p.Guarded)+len(p.ConfirmDouble)+len(p.Confirm)+len(p.Warn))
+	result = append(result, p.Guarded...)
+	result = append(result, p.ConfirmDouble...)
+	result = append(result, p.Confirm...)
+	result = append(result, p.Warn...)
+	return result
 }
 
 // ExpandHome expands ~ or ~/ to the user's home directory.
@@ -233,22 +239,21 @@ func ExpandHome(path string) string {
 }
 
 // flattenProtect converts a ProtectConfig into a flat PathRule slice.
+//
+// Only two protection levels are produced:
+//   - reject  (LevelReject)
+//   - guarded (LevelGuarded)
+//
+// The deprecated confirm_double/confirm/warn fields are already merged
+// into Guarded by Load(), so flattenProtect only needs to read Reject
+// and Guarded.
 func flattenProtect(p *ProtectConfig) []PathRule {
-	// Preallocate: we know the final slice length is exactly the sum
-	// of the four source slices, so growing the backing array via
-	// repeated append() would trigger avoidable reallocations.
-	rules := make([]PathRule, 0, len(p.Reject)+len(p.ConfirmDouble)+len(p.Confirm)+len(p.Warn))
+	rules := make([]PathRule, 0, len(p.Reject)+len(p.Guarded))
 	for _, path := range p.Reject {
 		rules = append(rules, PathRule{Path: ExpandHome(path), Level: LevelReject})
 	}
-	for _, path := range p.ConfirmDouble {
-		rules = append(rules, PathRule{Path: ExpandHome(path), Level: LevelConfirmDouble})
-	}
-	for _, path := range p.Confirm {
-		rules = append(rules, PathRule{Path: ExpandHome(path), Level: LevelConfirm})
-	}
-	for _, path := range p.Warn {
-		rules = append(rules, PathRule{Path: ExpandHome(path), Level: LevelWarn})
+	for _, path := range p.Guarded {
+		rules = append(rules, PathRule{Path: ExpandHome(path), Level: LevelGuarded})
 	}
 	return rules
 }
@@ -259,6 +264,8 @@ func (c *Config) GetProtectRules(cmd string) []PathRule {
 
 	var cmdRules []PathRule
 	if cc, ok := c.Protect.Command[cmd]; ok {
+		// Command-level overrides may also use deprecated fields.
+		cc.Guarded = MergeGuarded(cc)
 		cmdRules = flattenProtect(&cc)
 	}
 

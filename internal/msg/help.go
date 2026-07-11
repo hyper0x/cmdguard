@@ -4,7 +4,7 @@ package msg
 
 // GuardHelp returns the help text for guarded commands (rm/mv/chmod).
 func GuardHelp(cmdName string) string {
-	return `cmdguard — command protection tool
+	return `cmdguard - command protection tool
 
 Usage:
   ` + cmdName + ` [options] [arguments...]
@@ -15,13 +15,12 @@ Options:
   --verbose     Show detailed execution info (matched rule, backup path, actual command)
   --version     Show version info (including underlying command version)
   --help        Show this help (including underlying command help)
-  --bypass=<id> Force execution on a protected path (non-interactive)
+  --bypass=<id> Force execution on a guarded path (audit-logged)
 
 Protection levels:
-  reject           ` + LevelIcons[LevelReject] + `   ` + LevelActions[LevelReject] + `
-  confirm_double   ` + LevelIcons[LevelConfirmDbl] + `   ` + LevelActions[LevelConfirmDbl] + `
-  confirm          ` + LevelIcons[LevelConfirm] + `   ` + LevelActions[LevelConfirm] + `
-  warn             ` + LevelIcons[LevelWarn] + `   ` + LevelActions[LevelWarn] + `
+  reject           ` + LevelIcons[LevelReject] + `   Permanently off-limits; --bypass cannot override
+  guarded          ` + LevelIcons[LevelGuarded] + `   Requires --bypass; without it: rejected + logged
+  allow            ` + LevelIcons[LevelAllow] + `   No rule matched; executes directly
 
 More info: cmdguard help
 `
@@ -29,7 +28,7 @@ More info: cmdguard help
 
 // ─── Main help text ─────────────────────────────────────────────────
 
-var MainHelp = `cmdguard — command protection tool
+var MainHelp = `cmdguard - command protection tool
 
 Usage:
   cmdguard <command> [options]
@@ -75,17 +74,14 @@ vault options:
   --json        Output as JSON (used with "list")
 
 Protection levels:
-  reject           ` + LevelIcons[LevelReject] + `   ` + LevelActions[LevelReject] + `
-  confirm_double   ` + LevelIcons[LevelConfirmDbl] + `   ` + LevelActions[LevelConfirmDbl] + `
-  confirm          ` + LevelIcons[LevelConfirm] + `   ` + LevelActions[LevelConfirm] + `
-  warn             ` + LevelIcons[LevelWarn] + `   ` + LevelActions[LevelWarn] + `
+  reject           ` + LevelIcons[LevelReject] + `   Permanently off-limits; --bypass cannot override
+  guarded          ` + LevelIcons[LevelGuarded] + `   Requires --bypass; without it: rejected + logged
+  allow            ` + LevelIcons[LevelAllow] + `   No rule matched; executes directly
 
 Config file: ~/.cmdguard/config.toml
 Log dir:     ~/.cmdguard/log/
 Vault dir:   ~/.cmdguard/vault/
 
 Environment:
-  CMDGUARD_CONFIG_DIR    Custom config directory (default ~/.cmdguard)
-  CMDGUARD_NONINTERACTIVE  Skip confirm wait, go straight to rejection
-                           (for AI agents / automation; does NOT bypass)
+  CMDGUARD_CONFIG_DIR     Custom config directory (default ~/.cmdguard)
 `

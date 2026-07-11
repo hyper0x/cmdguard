@@ -12,8 +12,8 @@ import (
 
 // Result represents the outcome of a guard check.
 type Result struct {
-	Action  string   // "reject", "confirm_double", "confirm", "warn", "allow"
-	Rule    string   // the matched rule path
+	Action  string // "reject", "guarded", "allow"
+	Rule    string // the matched rule path
 	Targets []string
 	Message string
 }
@@ -175,16 +175,14 @@ func ExtractAllTargets(args []string) []string {
 func PrintWarning(cmd string, result *Result) {
 	icon := msg.LevelIcons[msg.LevelReject]
 	level := msg.LevelLabels[msg.LevelReject]
+
 	switch result.Action {
-	case msg.LevelConfirmDbl:
-		icon = msg.LevelIcons[msg.LevelConfirmDbl]
-		level = msg.LevelLabels[msg.LevelConfirmDbl]
-	case msg.LevelConfirm:
-		icon = msg.LevelIcons[msg.LevelConfirm]
-		level = msg.LevelLabels[msg.LevelConfirm]
-	case msg.LevelWarn:
-		icon = msg.LevelIcons[msg.LevelWarn]
-		level = msg.LevelLabels[msg.LevelWarn]
+	case msg.LevelGuarded:
+		icon = msg.LevelIcons[msg.LevelGuarded]
+		level = msg.LevelLabels[msg.LevelGuarded]
+	case msg.LevelAllow:
+		icon = msg.LevelIcons[msg.LevelAllow]
+		level = msg.LevelLabels[msg.LevelAllow]
 	}
 
 	fmt.Fprint(os.Stderr, msg.GuardWarningFmt(cmd, icon, level, result.Rule, result.Message, result.Targets))

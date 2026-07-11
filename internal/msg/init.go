@@ -63,22 +63,21 @@ const (
 To start using cmdguard, add one of the following to your shell config file
 (~/.zshrc, ~/.bashrc, ~/.bash_profile, etc.):
 
-Option 1 — Aliases (recommended for humans):
+Option 1 - Aliases (recommended for humans):
   alias rm='cmdguard rm'
   alias mv='cmdguard mv'
   alias chmod='cmdguard chmod'
 
-Option 2 — PATH hijack (recommended for AI agents):
+Option 2 - PATH hijack (recommended for AI agents):
   export PATH="$(cmdguard config --bin-dir):$PATH"
-  export CMDGUARD_NONINTERACTIVE=1   # skip the 5s/10s confirm wait
 
 After editing, run 'source ~/.zshrc' (or restart your terminal) to apply changes.
 
 Notes for AI agents:
-  - CMDGUARD_NONINTERACTIVE=1 skips the interactive wait but does NOT
-    grant permission. Protected paths still need --bypass=<id>.
-  - --bypass identifier format: <host>/<platform>/<agent>/<task>
-    Example: --bypass=mac-studio/qwenpaw/ai_research/cleanup-tmp-dirs
+  - When a command targets a guarded path, cmdguard rejects it and
+    prints guidance for the --bypass format.
+  - --bypass identifier format: <platform>/<agent>/<task>
+    Example: --bypass=qwenpaw/ai_research/cleanup-tmp-dirs
 
 Test with: rm --check
 `

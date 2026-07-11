@@ -8,27 +8,27 @@ import (
 
 // FuzzMatchPath stress-tests matchPath with random inputs to:
 //
-//   1. Confirm it never panics (the function is called inside Check
-//      on every cmdguard invocation; a panic here equals a hard
-//      crash on a destructive command path).
+//  1. Confirm it never panics (the function is called inside Check
+//     on every cmdguard invocation; a panic here equals a hard
+//     crash on a destructive command path).
 //
-//   2. Reassert the security invariants that motivated the matchPath
-//      boundary fix:
+//  2. Reassert the security invariants that motivated the matchPath
+//     boundary fix:
 //
-//        a. Whenever pattern is "<prefix>/**", any path that starts
-//           with `<prefix>` but is *not* `<prefix>` itself or under
-//           `<prefix>/...` must NOT match. The classic regression is
-//           "/etc/**" wrongly matching "/etcd". This is a security
-//           invariant — false matches expand the protection set
-//           into unrelated directories and cause spurious rejections,
-//           but missed boundary checks (the symmetric direction) leak
-//           protection. We only assert the false-positive direction
-//           because that's the one that previously broke.
+//     a. Whenever pattern is "<prefix>/**", any path that starts
+//     with `<prefix>` but is *not* `<prefix>` itself or under
+//     `<prefix>/...` must NOT match. The classic regression is
+//     "/etc/**" wrongly matching "/etcd". This is a security
+//     invariant — false matches expand the protection set
+//     into unrelated directories and cause spurious rejections,
+//     but missed boundary checks (the symmetric direction) leak
+//     protection. We only assert the false-positive direction
+//     because that's the one that previously broke.
 //
-//        b. Whenever pattern is "**<suffix>" (no slashes in suffix),
-//           the suffix must be a true filename suffix, not a substring.
-//           "**.key" must not match "file.keystore". Same security
-//           reasoning.
+//     b. Whenever pattern is "**<suffix>" (no slashes in suffix),
+//     the suffix must be a true filename suffix, not a substring.
+//     "**.key" must not match "file.keystore". Same security
+//     reasoning.
 //
 // IMPORTANT: matchPath internally runs filepath.Clean on both inputs
 // before comparing, so the invariants only apply to the *cleaned*

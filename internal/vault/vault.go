@@ -75,6 +75,13 @@ func (v *Vault) BackupDir(id string) string {
 	return filepath.Join(v.dir, fmt.Sprintf("%s_%s", ts, id))
 }
 
+// Dir returns the vault root directory path. Used in error messages
+// so the caller (human or agent) knows where to look when a backup
+// fails.
+func (v *Vault) Dir() string {
+	return v.dir
+}
+
 // SaveFile copies a file into the vault, preserving the source file's
 // permission bits, and records the original path in the backup's
 // manifest. The on-disk layout uses the original absolute path

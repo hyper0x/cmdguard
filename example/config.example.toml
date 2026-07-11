@@ -4,17 +4,17 @@
 # Path protection rules using glob patterns (** matches any depth).
 # Organized by protection level (strict to lenient):
 #
-#   reject           🚫   directly rejected, not executed
-#   confirm_double   🔒   warning + double confirmation (type 'yes') → backup → execute
-#   confirm          ❓   warning + single confirmation (press 'y') → backup → execute
-#   warn             ⚠️   warning + backup → execute
+#   reject    🚫   directly rejected, not executed (even with --bypass)
+#   guarded   🔒   rejected without --bypass; with valid --bypass -> backup -> execute
+#   allow     ✅   executed directly (default for unmatched paths)
 #
-# Rule matching order: reject → confirm_double → confirm → warn
+# Rule matching order: reject -> guarded
 # First match wins, so stricter rules should come first.
+# Paths not matching any rule are allowed by default.
 #
 # ⚠️  IMPORTANT: Source of truth
 # When this file defines a [protect] section, its rules are used
-# as-is — built-in defaults are NOT merged on top.
+# as-is - built-in defaults are NOT merged on top.
 # If you want NO reject rules, write "reject = []".
 # If you remove the entire [protect] section, built-in defaults apply.
 
@@ -37,35 +37,28 @@ reject = [
   "/System/**",
   "/Library/**",
   "/Applications/**",
-  # Key files — non-recoverable
+  # Key files - non-recoverable
   "*.key",
   "*.pem",
   "*.crt",
   "*.p12",
   "*.pfx",
   "*.asc",
-  # Home directory critical config — non-recoverable
+  # Home directory critical config - non-recoverable
   "~/.ssh/**",
   "~/.gnupg/**",
 ]
 
-confirm_double = [
-  # Home directory app data — cleanable but requires double confirmation
+guarded = [
+  # Home directory app data - requires --bypass to proceed
   "~/.config/**",
   "~/.local/share/**",
-]
-
-confirm = [
   "~/Documents/**",
   "~/Desktop/**",
 ]
 
-warn = [
-  "~/Downloads/**",
-]
-
-# Per-command overrides — apply stricter protection for specific commands.
-# Example: global rules set ~/.config/** to confirm_double, but rm is more
+# Per-command overrides - apply stricter protection for specific commands.
+# Example: global rules set ~/.config/** to guarded, but rm is more
 # dangerous so we override it to reject for rm only.
 [protect.command.rm]
 reject = [
@@ -80,7 +73,7 @@ reject = [
 ]
 
 # chmod changes permissions. Reject for app config directories
-# (global rules set ~/.config/** to confirm_double).
+# (global rules set ~/.config/** to guarded).
 [protect.command.chmod]
 reject = [
   "~/.config/**",
@@ -90,18 +83,3 @@ reject = [
 [vault]
 retention_days = 7
 auto_purge = true
-
-# Interactive prompt settings.
-#
-# Seconds to wait at each interactive confirmation prompt before
-# falling back to non-interactive rejection (with --bypass guidance).
-# Set to 0 to disable the timeout — only do this on personal machines
-# where no automation will ever hit a confirm-level path, otherwise
-# stray invocations may hang forever.
-#
-# AI agents and automation should set the env var instead:
-#   export CMDGUARD_NONINTERACTIVE=1
-# which skips the wait entirely (rejection is immediate).
-[guard]
-confirm_timeout = 5          # seconds; 'confirm' prompt
-confirm_double_timeout = 10  # seconds per step; 'confirm_double' prompt

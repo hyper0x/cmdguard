@@ -151,7 +151,7 @@ reject = ["~/.ssh/**"]
 	}
 }
 
-func TestRunConfig_DefaultShowsVaultAndGuard(t *testing.T) {
+func TestRunConfig_DefaultShowsVault(t *testing.T) {
 	r, w, _ := os.Pipe()
 	old := os.Stdout
 	os.Stdout = w
@@ -167,11 +167,12 @@ func TestRunConfig_DefaultShowsVaultAndGuard(t *testing.T) {
 	if !strings.Contains(out, "retention_days: 7") {
 		t.Errorf("expected default retention_days, got:\n%s", out)
 	}
-	if !strings.Contains(out, "confirm_timeout: 5") {
-		t.Errorf("expected default confirm_timeout, got:\n%s", out)
+	if !strings.Contains(out, "auto_purge: true") {
+		t.Errorf("expected default auto_purge, got:\n%s", out)
 	}
-	if !strings.Contains(out, "confirm_double_timeout: 10") {
-		t.Errorf("expected default confirm_double_timeout, got:\n%s", out)
+	// [guard] section is gone - verify it does NOT appear
+	if strings.Contains(out, "confirm_timeout") {
+		t.Errorf("guard section should be gone, got:\n%s", out)
 	}
 }
 

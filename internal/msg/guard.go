@@ -9,7 +9,7 @@ import (
 
 const (
 	// GuardCheckOK is shown when --check confirms the guard is active.
-	GuardCheckOK = TagCmdguard + " guard active — %s is running through cmdguard"
+	GuardCheckOK = TagCmdguard + " guard active - %s is running through cmdguard"
 
 	// GuardNoTargets is shown when no file paths are found in arguments.
 	GuardNoTargets = TagCmdguard + " no file paths detected, executing directly"
@@ -32,98 +32,72 @@ const (
 	// GuardRejected is shown after a reject action.
 	GuardRejected = TagCmdguard + " execution rejected"
 
-	// GuardDryRunBackup is shown in dry-run mode for confirm_double/confirm/warn.
+	// GuardDryRunBackup is shown in dry-run mode for guarded paths.
 	GuardDryRunBackup = TagCmdguard + " will backup and execute %s"
 
 	// GuardExecuting is shown in verbose mode before executing the real command.
 	GuardExecuting = TagCmdguard + " executing: %s %s"
 )
 
-// ─── Confirm / Confirm Double prompts ────────────────────────────────
+// ─── Guarded-path rejection (no --bypass) ───────────────────────────
 
 const (
-	// ConfirmTimeoutMsg is shown when the read timeout elapses.
-	// Substituted with the actual configured timeout in seconds.
-	ConfirmTimeoutMsg = TagCmdguard + " no input within %ds, treating as non-interactive"
+	// GuardNoBypassRejected is shown when a guarded path is hit
+	// without --bypass. In non-interactive mode this is the only
+	// rejection path: there is no interactive confirmation fallback.
+	GuardNoBypassRejected = TagCmdguard + " guarded path: execution rejected (no --bypass provided)"
 
-	// ConfirmTimeoutLogMsg is the log message for timeout rejection.
-	ConfirmTimeoutLogMsg = "timeout waiting for confirmation (%ds)"
+	// GuardNoBypassMsg is the log message for guarded-path rejection.
+	GuardNoBypassMsg = "rejected: guarded path, no --bypass provided"
 
-	// ConfirmHint is a one-line tip shown before the single confirmation prompt.
-	ConfirmHint = TagCmdguard + " press y to proceed, N or Enter to cancel, Ctrl+C to abort (timeout %ds)"
+	// GuardBackupFailed is shown when a vault backup fails. Backup
+	// failure is always fatal (exit 1): the undo safety net is broken,
+	// so proceeding would leave the user without a rollback path.
+	//
+	// The %s placeholder receives the vault directory path so the
+	// caller (human or agent) can immediately check permissions /
+	// disk space / sandbox constraints without having to run
+	// `cmdguard path` separately.
+	GuardBackupFailed = TagCmdguard + ` backup failed, aborting (undo safety net broken)
 
-	// ConfirmDoubleHint is a one-line tip shown for double confirmation.
-	ConfirmDoubleHint = TagCmdguard + " DOUBLE confirmation required: first press y, then type 'yes' and Enter (timeout %ds per step)"
-
-	// ConfirmTimeoutDisabled is shown when timeout is configured as 0
-	// (wait forever). Lets the user know they may need Ctrl+C.
-	ConfirmTimeoutDisabled = TagCmdguard + " (timeout disabled — waiting indefinitely, use Ctrl+C to abort)"
-
-	// ConfirmPrompt is the single-confirmation prompt.
-	ConfirmPrompt = "Proceed? (y/N): "
-
-	// ConfirmDoublePrompt1 is the first prompt for double confirmation.
-	ConfirmDoublePrompt1 = "Proceed? (y/N): "
-
-	// ConfirmDoublePrompt2 is the second prompt for double confirmation.
-	ConfirmDoublePrompt2 = "Confirm again — type 'yes' to proceed: "
-
-	// ConfirmCancelled is shown when the user cancels.
-	ConfirmCancelled = TagCmdguard + " cancelled"
-
-	// ConfirmCancelledMsg is the log message when the user cancels.
-	ConfirmCancelledMsg = "cancelled by user"
-
-	// ConfirmDoubleCancelledMsg is the log message when double confirmation fails.
-	ConfirmDoubleCancelledMsg = "cancelled by user (double confirmation failed)"
+  Vault dir: %s
+  Common causes:
+    - vault directory not writable (check permissions)
+    - disk full
+    - sandbox restriction (e.g. macOS Seatbelt blocking writes outside allowed paths)
+  Run 'cmdguard path' to inspect directory layout and sizes.`
 )
 
-// ─── Non-TTY / Bypass ───────────────────────────────────────────────
+// ─── Bypass ─────────────────────────────────────────────────────────
 
 const (
-	// GuardNonTTYRejected is shown when running non-interactively and a confirm-level path is hit.
-	GuardNonTTYRejected = TagCmdguard + " non-interactive mode, execution rejected"
-
-	// GuardNonTTYMsg is the log message for non-TTY rejection.
-	GuardNonTTYMsg = "non-interactive mode, automatically rejected"
-
-	// GuardEnvNonInteractiveMsg is the log message when the
-	// CMDGUARD_NONINTERACTIVE env var triggered the rejection.
-	GuardEnvNonInteractiveMsg = "rejected: CMDGUARD_NONINTERACTIVE is set"
-
-	// GuardBypassHelp is the guidance shown when an agent must use --bypass.
+	// GuardBypassHelp is the guidance shown when a guarded path is
+	// hit without --bypass.
 	GuardBypassHelp = TagCmdguard + ` This is a protected path (level: %s).
 
- If you are an AI agent or automation:
+ If you have reviewed this operation and confirmed it is safe,
+ retry with a --bypass=<identifier>:
 
- Step 1 — Declare yourself non-interactive (skip the 5s/10s wait):
-   export CMDGUARD_NONINTERACTIVE=1
+   %s --bypass=<platform>/<agent>/<task>
 
- Step 2 — If you have reviewed this operation and confirmed it is safe,
-          retry with a --bypass=<identifier>:
+ ⚠️  --bypass does NOT bypass audit logging. The operation is
+     still recorded with the bypass identifier for traceability.
 
-   %s --bypass=<host>/<platform>/<agent>/<task>
-
- ⚠️  CMDGUARD_NONINTERACTIVE alone does NOT grant permission. The
-     operation is still REJECTED unless --bypass=<id> is also given.
-     The env var only saves the interactive wait — it never opens a door.
-
- ⚠️  DO NOT copy the template "<host>/<platform>/<agent>/<task>"
+ ⚠️  DO NOT copy the template "<platform>/<agent>/<task>"
      verbatim. Replace each placeholder with a real value. Identifiers
-     that literally contain "host", "platform", "agent", "task" or
-     angle brackets will be REJECTED.
+     that literally contain "platform", "agent", "task" or angle
+     brackets will be REJECTED.
 
- The <identifier> MUST be a 4-segment path:
-   host      hostname or machine alias  (e.g. mac-studio)
-   platform  agent platform             (e.g. qwenpaw, claude-code, cursor)
-   agent     unique identifier         (e.g. ai_research, coding)
+ The <identifier> MUST be a 3-segment path:
+   platform  caller platform            (e.g. qwenpaw, claude-code, manual)
+   agent     unique caller identifier   (e.g. ai_research, haolin)
    task      brief task slug            (e.g. cleanup-tmp-dirs)
 
  Allowed characters per segment: [a-zA-Z0-9._-], no empty segments.
 
- Examples (do NOT copy verbatim — use your own values):
-   --bypass=mac-studio/qwenpaw/ai_research/cleanup-tmp-dirs
-   --bypass=laptop-air/claude-code/default/refactor-tests
+ Examples (do NOT copy verbatim - use your own values):
+   --bypass=qwenpaw/ai_research/cleanup-tmp-dirs
+   --bypass=manual/haolin/remove-old-logs
 `
 
 	// GuardBypassFlag is the flag name.
@@ -133,35 +107,34 @@ const (
 	//
 	// #nosec G101 -- gosec flags "bypass" as a credential-looking
 	// keyword. This is a user-facing message template, not a secret;
-	// the "%s" holds an agent identifier (host/platform/agent/task).
+	// the "%s" holds an agent identifier (platform/agent/task).
 	GuardBypassLogMsg = "bypassed by %s via --bypass"
 
 	// GuardBypassInvalid is shown when --bypass identifier does not match the required format.
 	GuardBypassInvalid = TagCmdguard + ` invalid --bypass identifier: %q
 
- The <identifier> MUST be a 4-segment path:
-   host      hostname or machine alias  (e.g. mac-studio)
-   platform  agent platform             (e.g. qwenpaw, claude-code, cursor)
-   agent     unique identifier         (e.g. ai_research, coding)
+ The <identifier> MUST be a 3-segment path:
+   platform  caller platform            (e.g. qwenpaw, claude-code, manual)
+   agent     unique caller identifier   (e.g. ai_research, haolin)
    task      brief task slug            (e.g. cleanup-tmp-dirs)
 
  Format rules:
-   - exactly 4 segments separated by '/'
+   - exactly 3 segments separated by '/'
    - each segment matches [a-zA-Z0-9._-]+ (no empty segments)
-   - total length >= 12 characters
-   - no template placeholders allowed (host, platform, agent, task,
+   - total length >= 10 characters
+   - no template placeholders allowed (platform, agent, task,
      angle brackets <>, foo, xxx, todo, ...)
 
- ⚠️  Do NOT copy the template "<host>/<platform>/<agent>/<task>"
+ ⚠️  Do NOT copy the template "<platform>/<agent>/<task>"
      verbatim. Replace each placeholder with a real value.
 
  Retry with a properly formed identifier:
 
-   %s --bypass=<host>/<platform>/<agent>/<task>
+   %s --bypass=<platform>/<agent>/<task>
 
- Examples (do NOT copy verbatim — use your own values):
-   --bypass=mac-studio/qwenpaw/ai_research/cleanup-tmp-dirs
-   --bypass=laptop-air/claude-code/default/refactor-tests
+ Examples (do NOT copy verbatim - use your own values):
+   --bypass=qwenpaw/ai_research/cleanup-tmp-dirs
+   --bypass=manual/haolin/remove-old-logs
 `
 
 	// GuardBypassInvalidMsg is the log message for invalid bypass.

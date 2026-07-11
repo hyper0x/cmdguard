@@ -102,28 +102,20 @@ func TestFlattenProtect_Empty(t *testing.T) {
 
 func TestFlattenProtect_AllLevels(t *testing.T) {
 	p := &ProtectConfig{
-		Reject:        []string{"/etc/**"},
-		ConfirmDouble: []string{"~/.config/**"},
-		Confirm:       []string{"~/Documents/**"},
-		Warn:          []string{"~/Downloads/**"},
+		Reject:  []string{"/etc/**"},
+		Guarded: []string{"~/.config/**"},
 	}
 	rules := flattenProtect(p)
-	if len(rules) != 4 {
-		t.Fatalf("flattenProtect = %d rules, want 4", len(rules))
+	if len(rules) != 2 {
+		t.Fatalf("flattenProtect = %d rules, want 2", len(rules))
 	}
 
-	// Check order: reject, confirm_double, confirm, warn
+	// Check order: reject, guarded
 	if rules[0].Level != LevelReject {
 		t.Errorf("rules[0].Level = %q, want reject", rules[0].Level)
 	}
-	if rules[1].Level != LevelConfirmDouble {
-		t.Errorf("rules[1].Level = %q, want confirm_double", rules[1].Level)
-	}
-	if rules[2].Level != LevelConfirm {
-		t.Errorf("rules[2].Level = %q, want confirm", rules[2].Level)
-	}
-	if rules[3].Level != LevelWarn {
-		t.Errorf("rules[3].Level = %q, want warn", rules[3].Level)
+	if rules[1].Level != LevelGuarded {
+		t.Errorf("rules[1].Level = %q, want guarded", rules[1].Level)
 	}
 }
 
@@ -157,7 +149,7 @@ func TestGetProtectRules_WithCommandOverride(t *testing.T) {
 	}
 	rules := cfg.GetProtectRules("rm")
 	// Should have global rules + command rules
-	globalCount := len(cfg.Protect.Reject) + len(cfg.Protect.ConfirmDouble)
+	globalCount := len(cfg.Protect.Reject) + len(cfg.Protect.Guarded)
 	if len(rules) <= globalCount {
 		t.Errorf("GetProtectRules should merge global + command rules, got %d rules, global has %d",
 			len(rules), globalCount)
@@ -177,8 +169,8 @@ func TestGetProtectRules_DifferentCommands(t *testing.T) {
 	mvRules := cfg.GetProtectRules("mv")
 	chmodRules := cfg.GetProtectRules("chmod")
 
-	// chmod has no command-specific rules, should only have global (reject + confirm_double)
-	globalCount := len(cfg.Protect.Reject) + len(cfg.Protect.ConfirmDouble)
+	// chmod has no command-specific rules, should only have global (reject + guarded)
+	globalCount := len(cfg.Protect.Reject) + len(cfg.Protect.Guarded)
 	if len(chmodRules) != globalCount {
 		t.Errorf("chmod should only have global rules, got %d, want %d",
 			len(chmodRules), globalCount)
@@ -251,6 +243,10 @@ auto_purge = false
 	}
 	if len(cfg.Protect.ConfirmDouble) != 1 || cfg.Protect.ConfirmDouble[0] != "~/.config/**" {
 		t.Errorf("ConfirmDouble = %v, want [~/.config/**]", cfg.Protect.ConfirmDouble)
+	}
+	// Deprecated fields (confirm_double, confirm, warn) should be merged into Guarded by Load()
+	if len(cfg.Protect.Guarded) != 3 {
+		t.Errorf("Guarded (merged from deprecated) = %v, want 3 entries", cfg.Protect.Guarded)
 	}
 	if len(cfg.Protect.Confirm) != 1 || cfg.Protect.Confirm[0] != "~/custom-confirm/**" {
 		t.Errorf("Confirm = %v, want [~/custom-confirm/**]", cfg.Protect.Confirm)
@@ -330,9 +326,9 @@ auto_purge = false
 	if len(cfg.Protect.Reject) == 0 {
 		t.Fatal("Reject should have default rules when [protect] is absent")
 	}
-	// Must have default confirm_double rules
-	if len(cfg.Protect.ConfirmDouble) == 0 {
-		t.Fatal("ConfirmDouble should have default rules when [protect] is absent")
+	// Must have default guarded rules (fallback)
+	if len(cfg.Protect.Guarded) == 0 {
+		t.Fatal("Guarded should have default rules when [protect] is absent")
 	}
 	// Vault should come from the file
 	if cfg.Vault.RetentionDays != 7 {
@@ -371,33 +367,6 @@ retention_days = 7
 	}
 }
 
-// TestLoad_GuardFieldLevelMerge verifies that only the specific guard
-// keys written in the file override defaults; omitted keys keep defaults.
-func TestLoad_GuardFieldLevelMerge(t *testing.T) {
-	dir := t.TempDir()
-	os.Setenv("CMDGUARD_CONFIG_DIR", dir)
-	defer os.Unsetenv("CMDGUARD_CONFIG_DIR")
-
-	// Only set confirm_timeout, omit confirm_double_timeout
-	configContent := `
-[guard]
-confirm_timeout = 15
-`
-	os.WriteFile(filepath.Join(dir, "config.toml"), []byte(configContent), 0644)
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() failed: %v", err)
-	}
-
-	if cfg.Guard.ConfirmTimeout != 15 {
-		t.Errorf("ConfirmTimeout = %d, want 15", cfg.Guard.ConfirmTimeout)
-	}
-	// confirm_double_timeout was NOT in the file, must keep default (10)
-	if cfg.Guard.ConfirmDoubleTimeout != 10 {
-		t.Errorf("ConfirmDoubleTimeout = %d, want 10 (default)", cfg.Guard.ConfirmDoubleTimeout)
-	}
-}
 func TestLoad_EmptyProtectSection_NoDefaults(t *testing.T) {
 	dir := t.TempDir()
 	os.Setenv("CMDGUARD_CONFIG_DIR", dir)

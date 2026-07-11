@@ -209,39 +209,31 @@ func TestCheck_Allow(t *testing.T) {
 	}
 }
 
-func TestCheck_ConfirmDouble(t *testing.T) {
+func TestCheck_Guarded(t *testing.T) {
 	cfg := &config.Config{
 		Protect: config.ProtectConfig{
-			ConfirmDouble: []string{"~/.config/**"},
+			Guarded: []string{"~/.config/**"},
 		},
 	}
 	result := Check(cfg, "rm", []string{"~/.config/htop"})
-	if result.Action != "confirm_double" {
-		t.Errorf("Check should return confirm_double, got %s", result.Action)
+	if result.Action != "guarded" {
+		t.Errorf("Check should return guarded, got %s", result.Action)
 	}
 }
 
-func TestCheck_Confirm(t *testing.T) {
+func TestCheck_Guarded_FromDeprecatedConfirm(t *testing.T) {
+	// Old config files may still use 'confirm' - it should be treated
+	// as guarded after Load() merges deprecated fields.
 	cfg := &config.Config{
 		Protect: config.ProtectConfig{
-			Confirm: []string{"~/Documents/**"},
+			Guarded: config.MergeGuarded(config.ProtectConfig{
+				Confirm: []string{"~/Documents/**"},
+			}),
 		},
 	}
 	result := Check(cfg, "rm", []string{"~/Documents/archive"})
-	if result.Action != "confirm" {
-		t.Errorf("Check should return confirm, got %s", result.Action)
-	}
-}
-
-func TestCheck_Warn(t *testing.T) {
-	cfg := &config.Config{
-		Protect: config.ProtectConfig{
-			Warn: []string{"~/Downloads/**"},
-		},
-	}
-	result := Check(cfg, "rm", []string{"~/Downloads/file.zip"})
-	if result.Action != "warn" {
-		t.Errorf("Check should return warn, got %s", result.Action)
+	if result.Action != "guarded" {
+		t.Errorf("Check should return guarded (from deprecated confirm), got %s", result.Action)
 	}
 }
 

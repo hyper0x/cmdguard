@@ -4,11 +4,11 @@ cmdguard 有自己的 vault 备份系统（不依赖系统回收站）。
 
 ## 工作原理
 
-1. 当 `confirm`、`confirm_double` 或 `warn` 级别的操作被执行时，目标文件先备份到 vault
+1. 当 `guarded` 级别的操作附带有效 `--bypass` 执行时，目标文件先备份到 vault
 2. 备份目录：`~/.cmdguard/vault/<时间戳>_<操作ID>/`
 3. 备份包含原始文件的完整副本和元数据
 4. 原始命令执行完毕后，vault 中的备份用于 `undo` 恢复
-5. 被 `reject` 的操作不会写入 vault（没有执行成功，无需备份），但仍记入审计日志
+5. 被 `reject` 的操作只记日志，不写入 vault（操作未执行，无需备份）
 
 ## 为什么不用系统回收站？
 
@@ -70,12 +70,18 @@ cmdguard list --json | cmdguard undo
   "id": "abc123456789",
   "timestamp": "2026-06-06T12:00:00+08:00",
   "command": "rm",
-  "action": "confirm",
+  "action": "guarded",
   "targets": "/Users/x/Documents/old.txt",
   "rule": "/Users/x/Documents/**",
   "message": "path matches protection rule '/Users/x/Documents/**'",
-  "bypass": "mac-studio/qwenpaw/ai_research/cleanup-cache"
+  "bypass": "qwenpaw/ai_research/cleanup-cache"
 }
 ```
 
 `bypass` 字段使审计可追溯到具体的智能体和任务。
+
+### 旧版日志条目
+
+v0.14 之前版本创建的日志条目可能包含 `confirm`、`confirm_double` 或 `warn`
+作为 `action` 值。这些条目仍可被 `cmdguard list` 和 `cmdguard undo` 正常读取。
+旧版常量保留用于向后兼容。

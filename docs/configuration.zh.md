@@ -4,7 +4,7 @@
 
 > **环境变量：** `CMDGUARD_CONFIG_DIR` 可自定义配置目录（含 `config.toml`、`log/`、`vault/`、`bin/`）。设置后所有路径均以此目录为根。
 >
-> **只读契约：** 配置文件对 cmdguard 程序本身是**只读**的。cmdguard 运行时不会修改、重写或自动清理它。只有 `cmdguard init --force` 才会覆盖（同时把旧文件打包到 `~/.cmdguard/backup/init-<时间戳>.zip`）。如果删错路径不存在了，cmdguard 不会"帮你"剔除条目——这是为了保证你的安全策略只反映你写下的内容。
+> **只读契约：** 配置文件对 cmdguard 程序本身是**只读**的。cmdguard 运行时不会修改、重写或自动清理它。只有 `cmdguard init --force` 才会覆盖（同时把旧文件打包到 `~/.cmdguard/backup/init-<时间戳>.zip`）。如果删错路径不存在了，cmdguard 不会"帮你"剔除条目--这是为了保证你的安全策略只反映你写下的内容。
 
 ## 基本结构
 
@@ -14,15 +14,10 @@ reject = [
   "/etc/**",
   "~/.ssh/**",
 ]
-confirm_double = [
+guarded = [
   "~/.config/**",
-]
-confirm = [
   "~/Documents/**",
   "~/Desktop/**",
-]
-warn = [
-  "~/Downloads/**",
 ]
 
 # 按命令覆盖
@@ -37,7 +32,7 @@ reject = [
   "~/Downloads/**",
 ]
 
-# chmod 修改权限，对应用配置目录设为 reject（全局规则中 ~/.config/** 是 confirm_double）
+# chmod 修改权限，对应用配置目录设为 reject（全局规则中 ~/.config/** 是 guarded）
 [protect.command.chmod]
 reject = [
   "~/.config/**",
@@ -46,17 +41,13 @@ reject = [
 [vault]
 retention_days = 7
 auto_purge = true
-
-[guard]
-confirm_timeout = 5          # 单确认等待秒数
-confirm_double_timeout = 10  # 双确认每步等待秒数
 ```
 
-> ⚠️ **配置优先级说明：** 当配置文件定义了 `[protect]` 段时，文件的规则**直接生效**——内置默认规则不会叠加。如果你不想要任何 reject 规则，写 `reject = []`。
+> ⚠️ **配置优先级说明：** 当配置文件定义了 `[protect]` 段时，文件的规则**直接生效**--内置默认规则不会叠加。如果你不想要任何 reject 规则，写 `reject = []`。
 >
 > 如果文件**没有** `[protect]` 段，则使用内置默认保护规则（这样只写了 `[vault]` 的配置文件仍然有默认保护）。
 >
-> `[vault]` 和 `[guard]` 使用**字段级合并**：只有你显式写的字段覆盖默认值，没写的字段保留内置默认值。
+> `[vault]` 使用**字段级合并**：只有你显式写的字段覆盖默认值，没写的字段保留内置默认值。
 
 ## 路径模式
 
@@ -67,54 +58,45 @@ confirm_double_timeout = 10  # 双确认每步等待秒数
 | `**` | 匹配任意层级 | `/etc/**` 匹配 `/etc/` 下所有文件和子目录 |
 | `*` | 匹配文件名中的任意字符 | `*.key` 匹配所有 `.key` 文件 |
 | `?` | 匹配单个字符 | `file.???` 匹配 `file.txt` 但不匹配 `file.html` |
-| `~` | 自动展开为用户家目录 | `~/.ssh/**` → `/Users/xxx/.ssh/**` |
+| `~` | 自动展开为用户家目录 | `~/.ssh/**` -> `/Users/xxx/.ssh/**` |
 
 ## 默认配置
 
 首次运行或 `cmdguard init` 生成的默认配置包含：
 
-- **reject：** 系统目录（`/bin/`、`/etc/`、`/usr/`、`/private/` 等）、密钥文件（`*.key`、`*.pem` 等）、家目录关键配置（`~/.ssh/`、`~/.gnupg/`、`~/.aws/`）
-- **confirm_double：** 家目录应用数据（`~/.config/`、`~/.local/share/`）
-- **confirm：** 文档目录（`~/Documents/`）、桌面文件（`~/Desktop/`）
-- **warn：** 下载目录（`~/Downloads/`）
+- **reject：** 系统目录（`/bin/`、`/etc/`、`/usr/`、`/private/` 等）、密钥文件（`*.key`、`*.pem` 等）、家目录关键配置（`~/.ssh/`、`~/.gnupg/`）
+- **guarded：** 家目录应用数据（`~/.config/`、`~/.local/share/`）、文档目录（`~/Documents/`）、桌面文件（`~/Desktop/`）
+- **allow：** 其他所有路径（默认--不匹配任何规则的路径直接放行）
 
 ## 保护级别
 
 | 级别 | 图标 | 行为 | 适用场景 |
 |:----|:---:|:----|:--------|
-| `reject` | 🚫 | 直接拒绝，不执行 | 系统目录、密钥文件、不可再生的配置 |
-| `confirm_double` | 🔒 | 警告 + 双层确认（输入 `yes`）→ 备份 → 执行 | 应用数据目录，可清理但需谨慎 |
-| `confirm` | ❓ | 警告 + 单层确认（按 `y`）→ 备份 → 执行 | 文档归档等偶尔需要清理的路径 |
-| `warn` | ⚠️ | 警告 + 备份 → 执行 | 下载目录等临时文件，仅提醒 |
+| `reject` | 🚫 | 始终拒绝，即使带 `--bypass` 也不执行。记日志。 | 系统目录、密钥文件、不可再生的配置 |
+| `guarded` | 🔒 | 不带 `--bypass`：拒绝 + 记日志。带有效 `--bypass`：备份 -> 记日志 -> 执行。 | 应用数据目录、文档等可清理但需谨慎的路径 |
+| `allow` | ✅ | 直接执行。记日志。 | 不匹配任何规则的路径 |
 
-**规则匹配顺序：** `reject → confirm_double → confirm → warn`，匹配到第一条即停止。
-
-## `[guard]` 段——交互超时
-
-```toml
-[guard]
-confirm_timeout = 5          # 默认 5 秒
-confirm_double_timeout = 10  # 默认 10 秒（每步）
-```
-
-| 键 | 默认值 | 说明 |
-|:---|:-----:|:----|
-| `confirm_timeout` | `5` | `confirm` 提示等待用户按键的秒数 |
-| `confirm_double_timeout` | `10` | `confirm_double` **每一步**等待的秒数（按 `y` 一步 + 输入 `yes` 一步） |
-
-**特殊值：**
-- `0` = 禁用超时，永远等待（直到用户按键或 Ctrl+C 中止）。仅建议在不会有任何自动化命中 confirm 路径的个人本机使用，否则任何漏掉 env 设置的智能体调用会让进程永久挂起。
-
-**超时触发后的行为：** 自动降级到非交互拒绝路径，输出与 `CMDGUARD_NONINTERACTIVE=1` / stdin 非 TTY 相同的 `--bypass` 引导信息，并在日志中记录 `timeout waiting for confirmation (Xs)`。
-
-**为什么需要超时？**
-`isTerminal()` 在某些智能体沙箱中会误判 stdin 为真 TTY（因为分配了伪终端）。如果没有超时，进程会永远挂在 `Are you sure?` 提示上。超时机制是为了在这些"假人"场景下兜底降级。
+**规则匹配顺序：** `reject -> guarded`，匹配到第一条即停止。不匹配任何规则的路径默认放行。
 
 ## 环境变量
 
 | 环境变量 | 用途 |
 |:--------|:----|
 | `CMDGUARD_CONFIG_DIR` | 自定义配置目录（含 `config.toml`、`log/`、`vault/`、`bin/`），默认 `~/.cmdguard` |
-| `CMDGUARD_NONINTERACTIVE` | 任意非空值即生效：跳过 `confirm`/`confirm_double` 的交互等待，直接走拒绝+bypass 引导路径。**不等于放行**——仍需 `--bypass=<id>` 才能真正执行 |
 
-`CMDGUARD_NONINTERACTIVE` 是给 AI 智能体和 CI 用的。设置后即时拒绝（0 延迟），不再等 5/10 秒。详见 [docs/commands.md](commands.md#--bypass)。
+cmdguard 不再使用任何控制行为的环境变量。旧的 `CMDGUARD_AGENT_MODE` 和 `CMDGUARD_NONINTERACTIVE` 会被静默忽略--wrapper 脚本不再设置它们，代码也不再读取它们。如果你已有的 wrapper 导出了这些变量，仍可正常工作（变量只是被忽略）。运行 `cmdguard init --force` 可重新生成干净的 wrapper。
+
+## 从 v0.14 之前版本迁移
+
+如果你有旧的 `config.toml` 包含 `[guard]` 段或旧的保护级别，改动对照如下：
+
+| 旧 | 新 | 说明 |
+|:----|:----|:------|
+| `confirm_double` | `guarded` | 在 `[protect]` 中改键名 |
+| `confirm` | `guarded` | 合并到同一个 `guarded` 列表 |
+| `warn` | （移除） | 删除这些路径，或如果需要备份则移到 `guarded` |
+| `[guard]` 段 | （移除） | 整个段被忽略；不再有交互设置 |
+| `CMDGUARD_AGENT_MODE` | （移除） | 不再需要；非交互是唯一模式 |
+| `CMDGUARD_NONINTERACTIVE` | （移除） | 同上 |
+
+TOML 解码器会静默忽略未知键，所以旧配置文件不会报错--但旧键不再有任何效果。`cmdguard init --force` 会写入使用新结构的干净配置。
