@@ -2,14 +2,11 @@
 
 > 创建时间：2026-07-11
 > 来源：ai_research agent 在日常工作中遇到的实际干扰记录
-> 用途：等 icloud-pull 项目完成后，回头集中改进 cmdguard
->
-> **更新（2026-07-11）**：v0.14.0 重构已将 cmdguard 改为**全程非交互**，
-> 删除了交互式 confirm 层、`CMDGUARD_NONINTERACTIVE` 环境变量、
-> `[guard]` 配置段。保护级别简化为 reject / guarded / allow 三级。
-> 下方"C1: `CMDGUARD_AGENT_MODE`"等提议已部分过时--cmdguard 现在
-> **本身就是**非交互的，不需要额外的 agent 模式开关。文中保留这些
-> 提议作为历史设计讨论记录。
+> 状态：**全部已解决**（v0.14.0，2026-07-12）
+
+本文档记录了 cmdguard 在与 AI agent 协作时出现的 7 个干扰问题。
+所有问题已在 v0.14.0 中通过非交互式重构根本解决，详见末尾
+"v0.14.0 解决方案"。
 
 ---
 
@@ -19,7 +16,7 @@
 
 ### 现象
 
-`backup-icloud-folder` v2.0.0 的 `clean_temp_copy` 函数用 `find -exec rm` 删除 `.DS_Store` 等排除文件。cmdguard 拦截了 `rm` 命令（弹出 confirm 提示），但 Python 的 `subprocess.run(..., capture_output=True)` 把 stderr（含 cmdguard 的 confirm 提示）吞掉了。函数返回 exit code 0（因为 `capture_output=True` 不报异常），打印 "Temp copy cleaned"，但实际上一个文件都没删。
+`backup-icloud-folder` 的 `clean_temp_copy` 函数用 `find -exec rm` 删除 `.DS_Store` 等排除文件。cmdguard 拦截了 `rm` 命令（弹出 confirm 提示），但 Python 的 `subprocess.run(..., capture_output=True)` 把 stderr（含 cmdguard 的 confirm 提示）吞掉了。函数返回 exit code 0（因为 `capture_output=True` 不报异常），打印 "Temp copy cleaned"，但实际上一个文件都没删。
 
 结果：备份的 zip 里多了 8 个 `.DS_Store` 文件，源端 946 个文件 vs 复制后 954 个，file count mismatch。
 
@@ -35,10 +32,9 @@ cmdguard 的 confirm 机制依赖 stderr 输出 + stdin 交互。当被调用方
 
 `clean_temp_copy` 改用纯 Python `os.walk` + `os.remove`/`shutil.rmtree`，彻底不经过外部 `rm`。
 
-### 改进建议
+### v0.14.0 解决
 
-- cmdguard 在非 TTY 环境下，应该**以非 0 exit code 退出**（当前已有 `CMDGUARD_AGENT_MODE` 但不一定是默认行为）
-- 或者：cmdguard 检测到 `capture_output` 场景（无 tty），应该 fail fast 而非静默吞掉
+删除全部交互层。guarded 路径无 `--bypass` = 立即 reject (exit 1)，不再有"超时降级"或"静默拒绝"。exit code 非 0 会被 `subprocess.run` 的 `check=True` 或调用方捕获。
 
 ---
 
@@ -63,10 +59,10 @@ cmdguard 的 confirm 机制依赖 stderr 输出 + stdin 交互。当被调用方
 
 ### 根因
 
-**已确认（2026-07-11 深度排查）**：根因是 **QwenPaw 的 macOS Seatbelt 沙箱**。
+**已确认**：根因是 **QwenPaw 的 macOS Seatbelt 沙箱**。
 
 QwenPaw 的 `execute_shell_command` 工具通过 `sandbox-exec` 运行命令，采用 deny-default 白名单模型。沙箱只允许写以下路径：
-- workspace_dir（`~/.qwenpaw/workspaces/ai_research`）
+- workspace_dir
 - `/tmp`、`/private/tmp`、`/dev/null` 等
 - policy.yaml 中 user_rules 显式 approved 的 mount 路径
 
@@ -80,23 +76,13 @@ QwenPaw 的 `execute_shell_command` 工具通过 `sandbox-exec` 运行命令，�
 5. cmdguard 的 `os.MkdirAll()` 创建 vault 备份目录 -> Seatbelt 拒绝 -> `operation not permitted`
 6. cmdguard backup 失败但只 warning，命令仍执行
 
-**历史发生记录**：
-- 2026-07-10 23:09（session gch7y84）：`chmod sync-qwenpaw-profile`
-- 2026-07-11 15:30：`chmod backup-icloud-folder backup-obsidian-vault`（2 个文件同时失败）
-- 2026-07-11 16:48：`chmod backup-icloud-folder.py`
-- 2026-07-11 16:53：`chmod backup-icloud-folder` + `rm backup-icloud-folder.py`
-
 **为什么后来不复现**：当 governance user_rules 积累了 `Bash(mkdir -p *)` 等 ALLOW 规则后，匹配的命令走 ALLOW 路径（不传 `sandbox_config`），命令不跑在沙箱里，vault 自然能写。即：同一命令在不同 session 的 governance 状态下，可能走沙箱也可能不走，行为不可预测。
 
-### 临时绕过
+### v0.14.0 解决
 
-无。每次都看到 warning，已经习以为常。
+backup 失败从 warn-only 改为 **exit 1（硬编码，不可配置）**。不再有"warning 噪音后继续执行"--要么 backup 成功后执行，要么 backup 失败后中止。失败输出含 vault 目录路径、常见原因（权限/磁盘/沙箱）、`cmdguard path` 诊断引导。
 
-### 改进建议
-
-- cmdguard 在 backup 失败时的行为应该可配置：`backup_fail = warn | block | skip`
-- 或者：检测到非 TTY 环境时，confirm 级别自动降级为 allow + log（当前 `CMDGUARD_AGENT_MODE` 是直接 reject，太激进）
-- **根因已确认**（见上方）：QwenPaw Seatbelt 沙箱白名单不含 `~/.cmdguard/vault/`。agent 模式跳过 backup 是务实方案；非沙箱环境 backup 正常工作
+**沙箱白名单问题不是 cmdguard 的问题**，解法在 QwenPaw 侧：把 `~/.cmdguard/**` 加入沙箱白名单。
 
 ---
 
@@ -122,10 +108,11 @@ cmdguard 的 wrapper 是 PATH 级别的 shell script 包装。当命令中包含
 2. 需要删文件时用 `unlink` 替代 `rm`（unlink 不在 cmdguard 的拦截列表里）
 3. 需要用 `rm` 时用绝对路径 `/bin/rm` 绕过 wrapper
 
-### 改进建议
+### v0.14.0 解决
 
-- cmdguard 应该更智能地处理 `find -exec` 中的子命令：如果 `find` 本身不在拦截列表里，`-exec` 后的 `rm` 也应该透传（因为这是 find 的子进程，不是用户直接调用）
-- 或者：提供 `cmdguard guard find -exec rm` 的透传模式
+wrapper 仍然会拦截 `find -exec` 中的 `rm`（这是设计行为）。但拦截后的行为从"不确定"变为**确定**：guarded 路径无 `--bypass` = 立即 reject (exit 1) + `--bypass` 格式引导，有 `--bypass` = backup -> 执行。
+
+**不做 `find -exec` 透传**：cmdguard 不解析 shell 子命令语法。wrapper 拦截的是 PATH 上的 `rm` binary，不关心调用者是 `find` 还是用户直接敲的。agent 撞到 reject 后靠引导信息自行换策略（`--bypass`、`/bin/rm`、Python `os.remove`）。
 
 ---
 
@@ -145,10 +132,9 @@ AI agent 的 shell 已经被 cmdguard 包装：`/bin/rm` 用别名/wrapper 劫�
 
 用 `/bin/rm -rf testdata/fuzz` 绝对路径绕过别名。
 
-### 改进建议
+### v0.14.0 解决
 
-- cmdguard 的 wrapper 应该有一个"开发模式"或"self-test 模式"，在该模式下不拦截命令
-- 或者：wrapper 检测当前工作目录是否是 cmdguard 项目本身，是则透传
+行为确定化后，拦截本身不是问题--agent 撞到 reject 会拿到明确的 `--bypass` 引导。不做"开发模式"或"self-test 模式"：安全后门与 cmdguard 存在意义矛盾。
 
 ---
 
@@ -164,9 +150,9 @@ AI agent 的 shell 已经被 cmdguard 包装：`/bin/rm` 用别名/wrapper 劫�
 
 v0.12.0 引入 sentinel 标记 `# cmdguard:wrapper:v1`，`findRealCommand` 跳过含 sentinel 的文件。
 
-### 改进建议
+### 备注
 
-已修复，无需再改。但记录在此作为参考。
+已修复，无需再改。记录在此作为参考。
 
 ---
 
@@ -188,19 +174,15 @@ cmdguard 在 TTY 环境下弹出 confirm 提示，等用户输入 y/N。但在�
 
 cmdguard 的超时降级机制（v0.6.0 引入）在非 TTY 环境下行为不够明确。`readLineWithTimeout` 超时后走非 TTY 路径，但这个"非 TTY 路径"的具体行为（reject? allow? log only?）取决于配置和代码版本。
 
-### 改进建议
+### v0.14.0 解决
 
-- 明确定义非 TTY 环境下的行为矩阵：
+**根本消除**：v0.14.0 删除全部交互层，非交互是唯一模式。不再有 TTY / 非 TTY / agent mode 三种行为分歧。所有调用方（人、agent、subprocess）看到的行为完全一致：
 
-  | 保护级别 | 非 TTY 行为 |
-  |---------|------------|
-  | reject | reject（exit 1） |
-  | confirm_double | reject（exit 1） |
-  | confirm | reject（exit 1）+ 引导使用 `--bypass` |
-  | allow | allow + log |
-
-- 当前 `CMDGUARD_AGENT_MODE` 是全局开关，建议改为按命令/路径粒度配置
-- 或者：启用 `CMDGUARD_AGENT_MODE=1`（或配置文件 `[guard] agent_mode = true`），在该模式下跳过交互等待，但仍要求 `--bypass` 做审计（详见"期望的改进方向"第 1 条）
+| 保护级别 | 无 `--bypass` | 有 `--bypass` |
+|---------|-------------|-------------|
+| reject | reject (exit 1) | reject (exit 1) |
+| guarded | reject (exit 1) + bypass 引导 | backup -> log -> execute |
+| allow | allow + log | allow + log |
 
 ---
 
@@ -216,9 +198,9 @@ cmdguard 的超时降级机制（v0.6.0 引入）在非 TTY 环境下行为不�
 
 写复杂 sh 脚本一律用 `write_file` 工具写到 `/tmp/xxx.sh`，再 `chmod +x && /tmp/xxx.sh`。
 
-### 改进建议
+### 备注
 
-这是 zsh + execute_shell_command 的问题，不是 cmdguard 的直接问题。但 cmdguard 的 wrapper 增加了 shell 解析的复杂度。
+这是 zsh + execute_shell_command 的问题，不是 cmdguard 的直接问题。
 
 ---
 
@@ -236,64 +218,41 @@ cmdguard 设计假设"有人在终端前操作"（confirm 等待 stdin 输入）
 - 要么遇到拦截后换策略（浪费时间）
 - 要么用绝对路径 `/bin/rm` 绕过（但失去了 cmdguard 的保护）
 
-### 最终改进方案（2026-07-11 定稿）
+---
 
-三个改动，不多不少。
+## v0.14.0 解决方案
 
-#### C1: `CMDGUARD_AGENT_MODE`（原 `CMDGUARD_NONINTERACTIVE` 改名）
+### 核心决策：删除全部交互层
 
-触发方式（env 覆盖 config 优先级模型）：
-- 环境变量 `CMDGUARD_AGENT_MODE` 存在时，以 env 值为准（`"1"` = true，`"0"` = false）
-- 环境变量不存在时，读配置文件 `[guard] agent_mode`（默认 `false`）
+v0.14.0 没有采用"加 agent 模式开关"的渐进方案，而是直接删除了整个交互式确认层：
 
-即：env 显式设置时覆盖 config，env 不设时 fallback 到 config。
-这样 QwenPaw 可按需注入 `CMDGUARD_AGENT_MODE=1` 而不改用户的 config 文件，
-也可以用 `CMDGUARD_AGENT_MODE=0` 临时关掉 config 里全局开的 agent 模式。
+- 删除 `CMDGUARD_NONINTERACTIVE` 环境变量
+- 删除 `CMDGUARD_AGENT_MODE` 环境变量（从未发布，仅存在于设计讨论中）
+- 删除 `[guard]` 配置段（`confirm_timeout`、`confirm_double_timeout`）
+- 删除 `readLineWithTimeout`、单/双确认交互流程
+- 净删 ~627 行，跨 33 个文件
 
-纯改名，不管向后兼容。注释、文档、反馈信息中写明白即可。
+保护级别从五级（reject / confirm_double / confirm / warn / allow）简化为三级：
 
-行为矩阵：
+| 级别 | 图标 | 行为 |
+|------|------|------|
+| reject | 🚫 | 拒绝 + 日志，`--bypass` 无法覆盖，exit 1 |
+| guarded | 🔒 | 无 `--bypass`：拒绝 + 日志 (exit 1)；有 `--bypass`：backup -> 日志 -> 执行 |
+| allow | ✅ | 无规则匹配，日志 + 直接执行 |
 
-| 场景 | Agent 模式 |
-|------|------------|
-| confirm + 有 bypass + backup 成功 | 验证 bypass -> backup -> 执行 |
-| confirm + 有 bypass + **backup 失败** | **exit 1（硬编码，不可配置）** |
-| confirm + 无 bypass | **立即 reject**（不等待，带引导信息） |
-| confirm_double + 无 bypass | **立即 reject**（不等待，带引导信息） |
-| reject | reject（不变） |
-| allow | allow + log（不变） |
+### 关键设计决策
 
-agent 模式唯一买的是：**跳过交互等待 + reject 时带引导信息**。
-backup 照做、审计照记、undo 照用，三大支柱一个不少。
-backup 失败 = exit 1，没有商量，没有配置项。
+**backup 失败 = exit 1（硬编码，不可配置）**：不再有 warn-only 模式。undo 安全网断了就必须中止，没有商量余地。失败输出含 vault 目录路径、常见原因、`cmdguard path` 诊断引导。
 
-reject 引导信息必须包含可复制的 `--bypass` 命令模板和格式示例，让 agent 撞墙一次就学会。
+**不做 `find -exec` 透传**：cmdguard 不解析 shell 子命令语法。wrapper 拦截的是 PATH 上的 binary，不关心调用者。agent 撞到 reject 后靠引导信息自行换策略。
 
-#### C2: 非 TTY 行为矩阵统一
+**不做"开发模式"**：安全后门与 cmdguard 存在意义矛盾。
 
-未启用 agent 模式时，非 TTY 行为也明确（当前超时降级路径不够清晰）：
+**旧 config 字段保留为 legacy alias**：`confirm_double` / `confirm` / `warn` 在 `Load()` 时合并到 `guarded`，旧配置文件无需修改。
 
-| 保护级别 | 非 TTY + 无 bypass | 非 TTY + 有 bypass |
-|---------|-------------------|-------------------|
-| reject | reject（exit 1） | reject（exit 1） |
-| confirm_double | reject（exit 1） | 验证 bypass -> backup -> 执行 |
-| confirm | reject（exit 1）+ 引导 `--bypass` | 验证 bypass -> backup -> 执行 |
-| allow | allow + log | allow + log |
+**bypass 标识从 4 段改为 3 段**：`<platform>/<agent>/<task>`，去掉冗余的 `host` 段。最小长度 12 -> 10。
 
-关键变化：非 TTY + confirm + 无 bypass = **立即 reject**（不等 5s 超时）。超时降级机制保留给 TTY 环境（防伪 TTY 卡死）。
-
-#### C5: wrapper agent 环境检测
-
-wrapper 检测到 `CMDGUARD_AGENT_MODE=1` 时，输出一行 debug 信息到 stderr（便于 agent 调试）。保护逻辑不变 - `cmdguard guard` 仍然拦截，agent 模式行为由 C1 控制。
-
-#### 不做的事
-
-- ~~`backup_fail` 配置项~~：backup 失败永远 exit 1，硬编码，不可配置
-- ~~`CMDGUARD_DEV_MODE`~~：安全后门，与 cmdguard 存在意义矛盾
-- ~~`find -exec` 透传~~：agent 撞墙后靠引导信息自行换策略（`/bin/rm` 或 Python `os.remove`），不需要 cmdguard 解析子命令
-- ~~向后兼容 `CMDGUARD_NONINTERACTIVE`~~：纯改名，不管老配置
-
-#### 沙箱环境（QwenPaw 侧问题，非 cmdguard 问题）
+### 沙箱环境（QwenPaw 侧问题，非 cmdguard 问题）
 
 QwenPaw Seatbelt 沙箱白名单不含 `~/.cmdguard/**`，导致 backup 写 vault 时 `os.MkdirAll()` 被拒 -> exit 1。
 
